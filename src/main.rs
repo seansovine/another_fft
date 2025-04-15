@@ -1,22 +1,36 @@
-/// Implementing the most basic FFT on nice Rust data structures.
-///
+/// This file is a place to test the FFT implementation(s).
 ///
 use another_fft::fft;
-
 use ndarray::Array1;
-
 use std::f64::consts::PI;
 
-const TEST: usize = 1;
+/// Which test sequence to use.
+const TEST: usize = 3;
 
+use clap::Parser;
+
+#[derive(Parser)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+  #[arg(long)]
+  test_number: Option<usize>,
+}
+
+/// Takes the FFT of a test sequence, followed by the inverse FFT.
+/// Outputs the original sequence, the FFT, and the IFFT of the FFT.
 fn main() {
-  let mut test_data = match TEST {
+  let args = Args::parse();
+  let test = match args.test_number {
+    Some(n) => n,
+    None => TEST,
+  };
+
+  let mut test_data = match test {
     1 => get_test_array_1(),
     2 => get_test_array_2(),
     3 => get_test_array_3(),
     _ => unimplemented!(),
   };
-
   println!("Original:  {:#?}", test_data);
 
   let mut inverse = false;
