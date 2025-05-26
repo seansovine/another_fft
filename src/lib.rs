@@ -1,5 +1,5 @@
-/// Home of functions to compute the FFT.
-///
+// Home of functions to compute the FFT.
+
 use std::f64::consts::PI;
 
 /// This is the implementation from
@@ -14,12 +14,12 @@ use std::f64::consts::PI;
 ///
 /// __Arguments:__
 ///
-/// + `data` - the sequence of N complex values with real parts
-///    even-numbered entries and imaginary parts in odd entries.
+/// + `data` - the sequence of N complex values with real parts in
+///   even-numbered entries and imaginary parts in odd entries.
 ///
 /// + `inverse` - if true will compute the inverse transform;
-///    the convention here is to put the 1/N normalizing factor
-///    on the inverse transform.
+///   the convention here is to put the 1/N normalizing factor
+///   on the inverse transform.
 ///
 pub fn fft(data: &mut [f64], inverse: bool) {
   let data_len = data.len() / 2;
@@ -30,7 +30,7 @@ pub fn fft(data: &mut [f64], inverse: bool) {
   let n = data.len() / 2;
   let nn = n << 1;
 
-  // Phase sign and normalizing factor for inverse transform.
+  // phase sign and normalizing factor for inverse transform
   let inv_sign: f64 = if inverse { 1f64 } else { -1f64 };
   let inv_mult = if inverse { 1f64 / (n as f64) } else { 1f64 };
 
@@ -49,15 +49,15 @@ pub fn fft(data: &mut [f64], inverse: bool) {
       data.swap(j, i);
     }
 
-    // Compute next potential swap row.
+    // compute next potential swap row
     m = n;
     while m >= 2 && j > m {
       j -= m;
-      m = m >> 1;
+      m >>= 1;
     }
     j += m;
 
-    // Divide by complex sequence length if inverse.
+    // divide by complex sequence length if inverse
     data[i - 1] *= inv_mult;
     data[i] *= inv_mult;
   }
@@ -85,8 +85,7 @@ pub fn fft(data: &mut [f64], inverse: bool) {
     wpr = -2.0f64 * wtemp * wtemp;
     wpi = theta.sin();
 
-    // Start recurrence for trigonometric functions
-    // of whole multiples of a given angle.
+    // start recurrence for trigonometric functions of whole multiples of a given angle
     let mut wr: f64 = 1.0;
     let mut wi: f64 = 0.0;
 
