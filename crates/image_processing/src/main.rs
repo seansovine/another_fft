@@ -13,11 +13,12 @@ pub struct CliArgs {
 #[derive(Subcommand)]
 pub enum Command {
   Test,
-  Resize(ResizeArgs),
+  Resize(PathArgs),
+  Grayscale(PathArgs),
 }
 
 #[derive(Debug, Args)]
-pub struct ResizeArgs {
+pub struct PathArgs {
   #[clap(long, required = true)]
   path: String,
 }
@@ -27,7 +28,8 @@ fn main() {
 
   match args.command {
     Command::Test => test(),
-    Command::Resize(args) => image_processing::resize::resize(&args.path),
+    Command::Resize(args) => image_processing::basic_ops::resize(&args.path),
+    Command::Grayscale(args) => image_processing::basic_ops::to_grayscale(&args.path),
   }
 }
 
