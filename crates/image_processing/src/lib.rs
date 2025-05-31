@@ -1,6 +1,7 @@
 // top-level library module
 
 pub mod basic_ops;
+pub mod fft;
 
 use another_fft::fft;
 use image::{ImageBuffer, Rgba};
