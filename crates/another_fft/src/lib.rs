@@ -147,13 +147,13 @@ pub fn fft_2d(data: &mut [f64], dimensions: (usize, usize), inverse: bool) {
   complex_transpose(data, dimensions, &mut transposed);
   // dimensions are now reversed
 
-  // column-wise fft (row-wised on transposed matrix)
+  // column-wise fft (row-wise on transposed matrix)
   for i in 0..width {
     let offset = i * height * 2;
     fft(&mut transposed[offset..offset + height * 2], inverse);
   }
 
-  // Transpose back now.
+  // transpose back now
   complex_transpose(&transposed, (dimensions.1, dimensions.0), data);
 }
 
@@ -186,7 +186,7 @@ pub fn complex_transpose(data_in: &[f64], in_dimensions: (usize, usize), data_ou
   }
 }
 
-// Unit tests.
+// unit tests
 
 #[cfg(test)]
 mod tests {

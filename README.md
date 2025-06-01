@@ -15,3 +15,21 @@ Cambridge University Press, 2007.
 ```
 
 which the authors credit to N.M. Brenner.
+
+## Image processing
+
+We've implemented a 2D FFT and added an `image_processing` crate that provides several
+operations, including the FFT, on image files.
+
+Here are some examples of images with their FFTs:
+
+<p align="center" margin="20px">
+        <img src="screenshots/example_1_fft.png" alt="drawing" width="800" style="padding-top: 15px; padding-bottom: 10px"/>
+</p>
+
+<p align="center" margin="20px">
+        <img src="screenshots/example_2_fft.png" alt="drawing" width="800" style="padding-top: 15px; padding-bottom: 10px"/>
+</p>
+
+In fact the images show are the magnitudes of the FFT coefficients, which are in general complex,
+and the images are converted to grayscale before the FFT is taken.

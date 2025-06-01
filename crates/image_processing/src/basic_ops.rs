@@ -7,20 +7,20 @@ use crate::Image;
 // Initially we'll use this to resize an image to power of two dimensions
 // so we can apply the 2-dimensional FFT to it.
 
-pub fn resize(in_path: &str) {
+pub fn resize(in_path: &str, new_width: usize, new_height: usize) {
   let image = Image::from_file(in_path);
   println!("Image loaded successfully!");
   println!("Dimensions: {:?}", image.dimensions);
 
-  let new_dimensions: (u32, u32) = (8192, 4096);
+  // let new_dimensions: (u32, u32) = (8192, 4096);
 
   println!("Resizing image...");
 
   let resize_filter = image::imageops::FilterType::CatmullRom;
   let buffer = image::imageops::resize(
     &image.image,
-    new_dimensions.0,
-    new_dimensions.1,
+    new_width as u32,
+    new_height as u32,
     resize_filter,
   );
 
