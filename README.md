@@ -31,5 +31,5 @@ Here are some examples of images with their FFTs:
         <img src="screenshots/example_2_fft.png" alt="drawing" width="800" style="padding-top: 15px; padding-bottom: 10px"/>
 </p>
 
-In fact the images show are the magnitudes of the FFT coefficients, which are in general complex,
+In fact the images shown are the magnitudes of the FFT coefficients, which are in general complex,
 and the images are converted to grayscale before the FFT is taken.
