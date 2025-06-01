@@ -15,7 +15,7 @@ pub enum Command {
   Test,
   Resize(ResizeArgs),
   Grayscale(PathArgs),
-  Fft(PathArgs),
+  Fft(FftArgs),
 }
 
 #[derive(Debug, Args)]
@@ -34,14 +34,24 @@ pub struct PathArgs {
   path: String,
 }
 
+#[derive(Debug, Args)]
+pub struct FftArgs {
+  #[clap(long, required = true)]
+  path: String,
+  #[clap(long, action)]
+  filter: bool,
+}
+
 fn main() {
   let args = CliArgs::parse();
 
   match args.command {
     Command::Test => test(),
-    Command::Resize(args) => image_processing::basic_ops::resize(&args.path, args.new_width, args.new_height),
+    Command::Resize(args) => {
+      image_processing::basic_ops::resize(&args.path, args.new_width, args.new_height)
+    }
     Command::Grayscale(args) => image_processing::basic_ops::to_grayscale(&args.path),
-    Command::Fft(args) => image_processing::fft::fft_image(&args.path),
+    Command::Fft(args) => image_processing::fft::fft_image(&args.path, args.filter),
   }
 }
 
