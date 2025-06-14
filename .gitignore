@@ -2,3 +2,4 @@
 *.patch
 /experiment
 /scratch
+/test_data
