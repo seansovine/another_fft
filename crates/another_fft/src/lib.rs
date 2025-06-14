@@ -112,3 +112,152 @@ pub fn fft(data: &mut [f64], inverse: bool) {
     mmax = istep;
   }
 }
+
+// 2D FFT implementation
+
+/// Basic implementation that works by applying the row-wise fft, transposing
+/// and applying the row-wise fft again, and then transposing again.
+///
+/// This version allocates a temporary array as part of the transposition, but
+/// a clever in-place algorithm for the transposition of a flattened array may
+/// exist.
+///
+/// __Arguments:__
+///
+/// + `data` - flattened 2D array of (real, complex) pairs
+///
+/// + `dimensions` - (width, height) of array of _complex_ values
+///
+pub fn fft_2d(data: &mut [f64], dimensions: (usize, usize), inverse: bool) {
+  // width in terms of conceptual complex data
+  // entries; data width is twice this number
+  let width = dimensions.0;
+  let height = dimensions.1;
+
+  // row-wise fft
+  for i in 0..height {
+    let offset = i * width * 2;
+    fft(&mut data[offset..offset + width * 2], inverse);
+  }
+
+  // we just allocate an intermediate array; a clever in-place algorithm for
+  // transposing a matrix in flattened form may exist, but this works for now
+  let mut transposed: Vec<f64> = vec![0.0_f64; 2 * width * height];
+
+  complex_transpose(data, dimensions, &mut transposed);
+  // dimensions are now reversed
+
+  // column-wise fft (row-wised on transposed matrix)
+  for i in 0..width {
+    let offset = i * height * 2;
+    fft(&mut transposed[offset..offset + height * 2], inverse);
+  }
+
+  // Transpose back now.
+  complex_transpose(&transposed, (dimensions.1, dimensions.0), data);
+}
+
+/// Transpose a matrix of complex entries represented as double-width
+/// matrix of real entries.
+///
+/// __Note:__
+///
+/// There is possibly a clever way to do the transposed on the flattened
+/// array in-place, but here we just allocate a new array for simplicity.
+///
+/// For our use cases there should be plenty of memory to spare, and we don't
+/// need that much efficiency that allocation will be too slow.
+pub fn complex_transpose(data_in: &[f64], in_dimensions: (usize, usize), data_out: &mut [f64]) {
+  let width = in_dimensions.0;
+  let height = in_dimensions.1;
+
+  for i in 0..height {
+    for j in 0..width {
+      // original and new real-part indices
+      let n_r = 2 * (i * width + j);
+      let n_r_new = (j * height + i) * 2;
+
+      // swap real parts
+      data_out[n_r_new] = data_in[n_r];
+      // swap complex parts -
+      // source and destination adjacent to real parts
+      data_out[n_r_new + 1] = data_in[n_r + 1];
+    }
+  }
+}
+
+// Unit tests.
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  const TEST_ARRAY: [f64; 12] = [
+    1.0, 6.0, 2.0, 5.0, 3.0, 4.0, //
+    4.0, 3.0, 5.0, 2.0, 6.0, 1.0, //
+  ];
+
+  const TEST_ARRAY_WIDTH: usize = 3;
+  const TEST_ARRAY_HEIGHT: usize = 2;
+
+  #[test]
+  fn complex_transpose_test() {
+    println!("Original matrix:");
+    print_matrix(&TEST_ARRAY, TEST_ARRAY_WIDTH, TEST_ARRAY_HEIGHT);
+
+    let mut transposed: Vec<f64> = vec![0.0_f64; 2 * TEST_ARRAY_WIDTH * TEST_ARRAY_HEIGHT];
+    complex_transpose(&TEST_ARRAY, (3, 2), &mut transposed);
+
+    println!("\nTransposed matrix:");
+    print_matrix(&transposed, TEST_ARRAY_HEIGHT, TEST_ARRAY_WIDTH);
+  }
+
+  const FFT_TEST_ARRAY: [f64; 16] = [
+    1.0, 6.0, 2.0, 5.0, 3.0, 4.0, 0.0, 0.0, //
+    4.0, 3.0, 5.0, 2.0, 6.0, 1.0, 0.0, 0.0, //
+  ];
+
+  const FFT_TEST_ARRAY_WIDTH: usize = 4;
+  const FFT_TEST_ARRAY_HEIGHT: usize = 2;
+
+  #[test]
+  fn fft_2d_test() {
+    let mut test_vec = Vec::from(FFT_TEST_ARRAY);
+    println!("Test matrix:");
+    print_matrix(&test_vec, FFT_TEST_ARRAY_WIDTH, FFT_TEST_ARRAY_HEIGHT);
+
+    let mut inverse = false;
+    fft_2d(
+      &mut test_vec,
+      (FFT_TEST_ARRAY_WIDTH, FFT_TEST_ARRAY_HEIGHT),
+      inverse,
+    );
+
+    println!("\nFFT of test matrix:");
+    print_matrix(&test_vec, FFT_TEST_ARRAY_WIDTH, FFT_TEST_ARRAY_HEIGHT);
+
+    inverse = true;
+    fft_2d(
+      &mut test_vec,
+      (FFT_TEST_ARRAY_WIDTH, FFT_TEST_ARRAY_HEIGHT),
+      inverse,
+    );
+
+    println!("\nIFFT of FFT of test matrix:");
+    print_matrix(&test_vec, FFT_TEST_ARRAY_WIDTH, FFT_TEST_ARRAY_HEIGHT);
+  }
+
+  // test helper functions
+
+  fn print_matrix(data: &[f64], width: usize, height: usize) {
+    for i in 0..height {
+      for j in 0..width {
+        let offset = (i * width + j) * 2;
+        let r = data[offset];
+        let c = data[offset + 1];
+        print!("({:>4.1}, {:>4.1}) ", r, c);
+      }
+      println!();
+    }
+  }
+}

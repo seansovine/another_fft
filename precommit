@@ -4,4 +4,4 @@ echo "Formatting with cargo fmt."
 cargo fmt
 
 echo "Linting with clippy."
-cargo clippy
+cargo clippy --all-targets

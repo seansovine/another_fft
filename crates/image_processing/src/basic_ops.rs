@@ -28,7 +28,7 @@ pub fn resize(in_path: &str) {
 
   // save resized image, to hard-coded file for now
 
-  const OUTPATH: &str = "test/resized.jpg";
+  const OUTPATH: &str = "test_data/resized.jpg";
   buffer
     .save_with_format(OUTPATH, image::ImageFormat::Jpeg)
     .unwrap();
@@ -53,11 +53,7 @@ pub fn to_grayscale(in_path: &str) {
 
   for i in 0..dims.0 {
     for j in 0..dims.1 {
-      // account for 4-byte representation and row-column
-      // let pix_offset = (i * 4 + (4 * j * dims.0)) as usize;
-
       let pixel = &mut image.image[(i, j)].0;
-
       let grayscale_val = to_grayscale(pixel);
 
       pixel[0] = grayscale_val;
@@ -70,7 +66,7 @@ pub fn to_grayscale(in_path: &str) {
 
   // save grayscale image, to hard-coded file for now
 
-  const OUTPATH: &str = "test/grayscale.jpg";
+  const OUTPATH: &str = "test_data/grayscale.jpg";
   image
     .image
     .save_with_format(OUTPATH, image::ImageFormat::Jpeg)
