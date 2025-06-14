@@ -1,8 +1,3 @@
-[package]
-name = "another_fft"
-version = "0.1.0"
-edition = "2024"
-
-[dependencies]
-clap = { version = "4.5.36", features = ["derive"] }
-ndarray = "0.16.1"
+[workspace]
+members = ["crates/another_fft", "crates/image_processing"]
+resolver = "3"

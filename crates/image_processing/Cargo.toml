@@ -1,0 +1,13 @@
+[package]
+name = "image_processing"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+another_fft = { version = "0.1.0", path = "../another_fft" }
+clap = { version = "4.5.39", features = ["derive"] }
+
+[dependencies.image]
+version = "0.24"
+default-features = false
+features = ["png", "jpeg"]
