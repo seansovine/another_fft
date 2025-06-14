@@ -3,6 +3,7 @@ mod tests;
 
 // Home of functions to compute the FFT.
 
+use rayon::{ThreadPool, prelude::*};
 use std::f64::consts::PI;
 
 /// This is the implementation from
@@ -131,6 +132,10 @@ pub fn fft(data: &mut [f64], inverse: bool) {
 ///
 /// + `dimensions` - (width, height) of array of _complex_ values
 ///
+/// + `inverse` - if true will compute the inverse transform;
+///   the convention here is to put the 1/MN normalizing factor
+///   on the inverse transform.
+///
 pub fn fft_2d(data: &mut [f64], dimensions: (usize, usize), inverse: bool) {
   // width in terms of conceptual complex data
   // entries; data width is twice this number
@@ -166,11 +171,9 @@ pub fn fft_2d(data: &mut [f64], dimensions: (usize, usize), inverse: bool) {
 /// __Note:__
 ///
 /// There is possibly a clever way to do the transposed on the flattened
-/// array in-place, but here we just allocate a new array for simplicity.
+/// array in-place, but here we copy into a separate buffor for simplicity.
 ///
-/// For our use cases there should be plenty of memory to spare, and we don't
-/// need that much efficiency that allocation will be too slow.
-pub fn complex_transpose(data_in: &[f64], in_dimensions: (usize, usize), data_out: &mut [f64]) {
+fn complex_transpose(data_in: &[f64], in_dimensions: (usize, usize), data_out: &mut [f64]) {
   let width = in_dimensions.0;
   let height = in_dimensions.1;
 
@@ -187,4 +190,72 @@ pub fn complex_transpose(data_in: &[f64], in_dimensions: (usize, usize), data_ou
       data_out[n_r_new + 1] = data_in[n_r + 1];
     }
   }
+}
+
+// parallel 2d FFT implementation
+
+fn fft_2d_para_internal(
+  data: &mut [f64],
+  working_buffer: &mut [f64],
+  dimensions: (usize, usize),
+  inverse: bool,
+) {
+  assert!(working_buffer.len() == data.len());
+
+  // width in terms of conceptual complex data
+  // entries; data width is twice this number
+  let width = dimensions.0;
+  let height = dimensions.1;
+
+  // perform the row-wise FFT in parallel, letting Rayon handle
+  // the details; each "job" fpr rayon is a row of the matrix
+  data
+    .par_chunks_exact_mut(width * 2)
+    .for_each(|slice| fft(slice, inverse));
+
+  complex_transpose(data, dimensions, working_buffer);
+  // dimensions are now reversed
+
+  // each job is a row of transposed matrix
+  working_buffer
+    .par_chunks_exact_mut(height * 2)
+    .for_each(|slice| fft(slice, inverse));
+
+  // transpose back now
+  complex_transpose(&*working_buffer, (dimensions.1, dimensions.0), data);
+}
+
+/// Basic parallel implementation that works by applying the row-wise fft,
+/// transposing and applying the row-wise fft again, and then transposing again.
+/// The parallelization is done on the computation of row-wise FFTs.
+///
+/// Note that this implementation takes in a working buffer the same size as
+/// the image data, that it uses to hold the transposed image matrix in the
+/// intermediate step. The transpose operation is not done in parallel and adds
+/// significant time to the computation.
+///
+/// __Arguments:__
+///
+/// + `data` - flattened 2D array of (real, complex) pairs
+///
+/// + `working_buffer` - flattened 2D array of (real, complex) pairs the same size
+///   as `data`, for use in intermediate steps of the FFT computation
+///
+/// + `dimensions` - (width, height) of array of _complex_ values
+///
+/// + `inverse` - if true will compute the inverse transform;
+///   the convention here is to put the 1/MN normalizing factor
+///   on the inverse transform.
+///
+/// + `thread_pool` - Rayon thread pool to execute the computation within
+///
+pub fn fft_2d_para(
+  data: &mut [f64],
+  working_buffer: &mut [f64],
+  dimensions: (usize, usize),
+  inverse: bool,
+  thread_pool: &ThreadPool,
+) {
+  // run parallel fft in rayon thread pool
+  thread_pool.install(|| fft_2d_para_internal(data, working_buffer, dimensions, inverse));
 }

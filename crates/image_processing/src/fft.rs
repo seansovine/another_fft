@@ -1,89 +1,146 @@
-// Initial code for visualizing the FFT of a grayscale image.
+// Code for computing the FFT of an image and possibly applying a Fourier-side filter.
 //
-// We won't take pains to make anything in the initial version of this
-// particularly efficient; we're going to start by just getting it to
-// work, with reasonable efficiency, then we'll optimize later.
+// The computation is parallelized with Rayon, but there is more
+// work that could be done to optimize and improve efficiency.
 
-use another_fft::fft_2d;
+use another_fft::fft_2d_para;
 
 use image::{ImageBuffer, Rgba};
+use std::time;
 
 use crate::Image;
 
+/// Compute image FFT, possibly apply Fourier-side filter, and then recover
+/// the image by applying IFFT.
+///
+/// Note: Assumes image dimensions are powers of 2.
 pub fn fft_image(in_path: &str, filter: bool) {
   let image = Image::from_file(in_path);
   let dims = image.dimensions;
 
-  // forward fft
+  let report_elapsed = |time: time::Instant| {
+    let elapsed = time.elapsed().as_secs_f32();
+    println!("... {:>2.3}s", elapsed);
+  };
 
-  println!("Image width and height: ({}, {})", dims.0, dims.1);
+  //// setup for parallel FFT
+
+  println!("Performing initial setup.");
+
+  let time = time::Instant::now();
+  let num_threads = num_cpus::get();
+  let pool = rayon::ThreadPoolBuilder::new()
+    .num_threads(num_threads)
+    .build()
+    .unwrap();
+
+  // pre-allocate working space for the parallel FFT code
+  let mut working_buffer: Vec<f64> = vec![0.0_f64; 2 * dims.0 as usize * dims.1 as usize];
+
+  report_elapsed(time);
+  println!("> Image width and height: ({}, {})", dims.0, dims.1);
+
+  //// forward fft
+
   println!("Converting image to FFT format.");
 
+  let time = time::Instant::now();
   let mut grayscale_data =
     GrayscaleImageData::from_rgba_bytes(&image.image, (dims.0 as usize, dims.1 as usize));
 
+  report_elapsed(time);
   println!("Performing FFT.");
 
-  fft_2d(
+  let time = time::Instant::now();
+  fft_2d_para(
     &mut grayscale_data.complex_data,
+    &mut working_buffer,
     grayscale_data.dimensions,
     false,
+    &pool,
   );
 
+  report_elapsed(time);
   println!("Converting FFT to image format.");
 
+  let time = time::Instant::now();
   let fft_image = grayscale_data.to_fft_image_buffer(true);
 
+  report_elapsed(time);
   println!("Writing image to file.");
 
   const FFT_OUTPATH: &str = "test_data/fft.jpg";
 
+  let time = time::Instant::now();
   fft_image
     .save_with_format(FFT_OUTPATH, image::ImageFormat::Jpeg)
     .unwrap();
 
-  // maybe apply filter on Fourier side
+  report_elapsed(time);
+
+  //// maybe apply filter on Fourier side
 
   if filter {
     println!("Applying filter to Fourier coefficients.");
 
-    grayscale_data.apply_filter();
+    // for now we hard-code the cutoff
+    const CUTOFF_RADIUS: f32 = 100.0;
 
+    let time = time::Instant::now();
+    grayscale_data.apply_filter(CUTOFF_RADIUS);
+
+    report_elapsed(time);
     println!("Converting filtered FFT to image format.");
 
+    let time = time::Instant::now();
     let fft_image = grayscale_data.to_fft_image_buffer(true);
 
+    report_elapsed(time);
     println!("Writing image to file.");
 
     const FILTERED_FFT_OUTPATH: &str = "test_data/fft_filtered.jpg";
 
+    let time = time::Instant::now();
     fft_image
       .save_with_format(FILTERED_FFT_OUTPATH, image::ImageFormat::Jpeg)
       .unwrap();
+
+    report_elapsed(time);
   }
 
-  // inverse fft of fft
+  //// inverse fft of fft
 
   println!("Performing inverse FFT.");
 
-  fft_2d(
+  let time = time::Instant::now();
+  fft_2d_para(
     &mut grayscale_data.complex_data,
+    &mut working_buffer,
     grayscale_data.dimensions,
     true,
+    &pool,
   );
 
+  report_elapsed(time);
   println!("Converting data back to grayscale image format.");
 
+  let time = time::Instant::now();
   let ifft_image = grayscale_data.to_fft_image_buffer(false);
 
+  report_elapsed(time);
   println!("Writing reconstructed image to file.");
 
   const RECONSTRUCTED_OUTPATH: &str = "test_data/reconstructed.jpg";
 
+  let time = time::Instant::now();
   ifft_image
     .save_with_format(RECONSTRUCTED_OUTPATH, image::ImageFormat::Jpeg)
     .unwrap();
+
+  report_elapsed(time);
 }
+
+// Image Fourier data structure.
 
 /// Represents the raw data of a grayscale image as an array
 /// of complex floats, for use as input to the FFT function.
@@ -127,6 +184,8 @@ impl GrayscaleImageData {
 
     let mut image = image::RgbaImage::new(width as u32, height as u32);
 
+    // set non-trivial scale factor and origin
+    // shift if shift_and_scale is true
     let (scale_factor, j_shift, i_shift) = if shift_and_scale {
       (1000.0_f64, width / 2, height / 2)
     } else {
@@ -156,17 +215,14 @@ impl GrayscaleImageData {
 
     image
   }
-}
 
-impl GrayscaleImageData {
-  fn apply_filter(&mut self) {
-    // for now we hard code a filter; later we'll make it more generic
-
+  /// For now we implement a high-pass filter; we can implement other
+  /// filter types later and then make this function more generic.
+  fn apply_filter(&mut self, cutoff_radius: f32) {
     let width = self.dimensions.0;
     let height = self.dimensions.1;
 
-    // this will be made a parameter later
-    let cutoff_radius_sqr: f32 = 100.0_f32.powi(2);
+    let cutoff_radius_sqr: f32 = cutoff_radius.powi(2);
 
     // apply circular cutoff around Fourier origin
     for i in 0..height {
@@ -176,9 +232,9 @@ impl GrayscaleImageData {
         let j_signed = ((j + width / 2) % width) as f32 - width as f32 / 2.0;
 
         let mag_sqr = (i_signed).powi(2) + (j_signed).powi(2);
-        let offset = 2 * (i * width + j);
 
         if mag_sqr <= cutoff_radius_sqr {
+          let offset = 2 * (i * width + j);
           self.complex_data[offset] = 0.0;
           self.complex_data[offset + 1] = 0.0;
         }

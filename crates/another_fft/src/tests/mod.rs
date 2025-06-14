@@ -10,6 +10,10 @@ const TEST_ARRAY: [f64; 12] = [
 const TEST_ARRAY_WIDTH: usize = 3;
 const TEST_ARRAY_HEIGHT: usize = 2;
 
+// Note: These tests just write out results to the console for
+// visual inspection for now. In particular, you'll want to run
+// cargo test with the --show-output flag.
+
 #[test]
 fn complex_transpose_test() {
   println!("Original matrix:");
