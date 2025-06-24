@@ -7,8 +7,8 @@ use crate::Image;
 // Initially we'll use this to resize an image to power of two dimensions
 // so we can apply the 2-dimensional FFT to it.
 
-pub fn resize(in_path: &str, new_width: usize, new_height: usize) {
-    let image = Image::from_file(in_path);
+pub fn resize(in_path: &str, new_width: usize, new_height: usize) -> Result<(), String> {
+    let image = Image::from_file(in_path)?;
     println!("Image loaded successfully!");
     println!("Dimensions: {:?}", image.dimensions);
 
@@ -34,12 +34,14 @@ pub fn resize(in_path: &str, new_width: usize, new_height: usize) {
         .unwrap();
 
     // view result: wgpu_grapher image --path test/resized.jpg
+
+    Ok(())
 }
 
 // Convert image pixels to grayscale but still RGBA representation.
 
-pub fn to_grayscale(in_path: &str) {
-    let mut image = Image::from_file(in_path);
+pub fn to_grayscale(in_path: &str) -> Result<(), String> {
+    let mut image = Image::from_file(in_path)?;
     let dims = image.dimensions;
 
     println!("Image loaded successfully!");
@@ -73,4 +75,6 @@ pub fn to_grayscale(in_path: &str) {
         .unwrap();
 
     // view result: wgpu_grapher image --path test/grayscale.jpg
+
+    Ok(())
 }

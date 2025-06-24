@@ -8,20 +8,19 @@ use clap::{Args, Parser, Subcommand};
 pub struct CliArgs {
     #[clap(subcommand)]
     pub command: Command,
+    #[clap(long, required = true)]
+    path: String,
 }
 
 #[derive(Subcommand)]
 pub enum Command {
-    Test,
     Resize(ResizeArgs),
-    Grayscale(PathArgs),
+    Grayscale,
     Fft(FftArgs),
 }
 
 #[derive(Debug, Args)]
 pub struct ResizeArgs {
-    #[clap(long, required = true)]
-    path: String,
     #[clap(required = true)]
     new_width: usize,
     #[clap(required = true)]
@@ -29,33 +28,22 @@ pub struct ResizeArgs {
 }
 
 #[derive(Debug, Args)]
-pub struct PathArgs {
-    #[clap(long, required = true)]
-    path: String,
-}
-
-#[derive(Debug, Args)]
 pub struct FftArgs {
-    #[clap(long, required = true)]
-    path: String,
     #[clap(long, action)]
     filter: bool,
 }
 
-fn main() {
+fn main() -> Result<(), String> {
     let args = CliArgs::parse();
+    let path = &args.path;
 
     match args.command {
-        Command::Test => test(),
         Command::Resize(args) => {
-            image_processing::basic_ops::resize(&args.path, args.new_width, args.new_height)
+            image_processing::basic_ops::resize(path, args.new_width, args.new_height)?
         }
-        Command::Grayscale(args) => image_processing::basic_ops::to_grayscale(&args.path),
-        Command::Fft(args) => image_processing::fft::fft_image(&args.path, args.filter),
+        Command::Grayscale => image_processing::basic_ops::to_grayscale(&args.path)?,
+        Command::Fft(args) => image_processing::fft::fft_image(path, args.filter)?,
     }
-}
 
-fn test() {
-    println!("Running FFT test:");
-    image_processing::fft_test();
+    Ok(())
 }

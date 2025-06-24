@@ -14,8 +14,8 @@ use crate::Image;
 /// the image by applying IFFT.
 ///
 /// Note: Assumes image dimensions are powers of 2.
-pub fn fft_image(in_path: &str, filter: bool) {
-    let image = Image::from_file(in_path);
+pub fn fft_image(in_path: &str, filter: bool) -> Result<(), String> {
+    let image = Image::from_file(in_path)?;
     let dims = image.dimensions;
 
     let report_elapsed = |time: time::Instant| {
@@ -138,6 +138,8 @@ pub fn fft_image(in_path: &str, filter: bool) {
         .unwrap();
 
     report_elapsed(time);
+
+    Ok(())
 }
 
 // Image Fourier data structure.
