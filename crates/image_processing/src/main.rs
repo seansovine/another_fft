@@ -6,56 +6,56 @@ use clap::{Args, Parser, Subcommand};
 
 #[derive(Parser)]
 pub struct CliArgs {
-  #[clap(subcommand)]
-  pub command: Command,
+    #[clap(subcommand)]
+    pub command: Command,
 }
 
 #[derive(Subcommand)]
 pub enum Command {
-  Test,
-  Resize(ResizeArgs),
-  Grayscale(PathArgs),
-  Fft(FftArgs),
+    Test,
+    Resize(ResizeArgs),
+    Grayscale(PathArgs),
+    Fft(FftArgs),
 }
 
 #[derive(Debug, Args)]
 pub struct ResizeArgs {
-  #[clap(long, required = true)]
-  path: String,
-  #[clap(required = true)]
-  new_width: usize,
-  #[clap(required = true)]
-  new_height: usize,
+    #[clap(long, required = true)]
+    path: String,
+    #[clap(required = true)]
+    new_width: usize,
+    #[clap(required = true)]
+    new_height: usize,
 }
 
 #[derive(Debug, Args)]
 pub struct PathArgs {
-  #[clap(long, required = true)]
-  path: String,
+    #[clap(long, required = true)]
+    path: String,
 }
 
 #[derive(Debug, Args)]
 pub struct FftArgs {
-  #[clap(long, required = true)]
-  path: String,
-  #[clap(long, action)]
-  filter: bool,
+    #[clap(long, required = true)]
+    path: String,
+    #[clap(long, action)]
+    filter: bool,
 }
 
 fn main() {
-  let args = CliArgs::parse();
+    let args = CliArgs::parse();
 
-  match args.command {
-    Command::Test => test(),
-    Command::Resize(args) => {
-      image_processing::basic_ops::resize(&args.path, args.new_width, args.new_height)
+    match args.command {
+        Command::Test => test(),
+        Command::Resize(args) => {
+            image_processing::basic_ops::resize(&args.path, args.new_width, args.new_height)
+        }
+        Command::Grayscale(args) => image_processing::basic_ops::to_grayscale(&args.path),
+        Command::Fft(args) => image_processing::fft::fft_image(&args.path, args.filter),
     }
-    Command::Grayscale(args) => image_processing::basic_ops::to_grayscale(&args.path),
-    Command::Fft(args) => image_processing::fft::fft_image(&args.path, args.filter),
-  }
 }
 
 fn test() {
-  println!("Running FFT test:");
-  image_processing::fft_test();
+    println!("Running FFT test:");
+    image_processing::fft_test();
 }
