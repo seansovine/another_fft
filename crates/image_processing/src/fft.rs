@@ -14,8 +14,7 @@ use crate::Image;
 /// the image by applying IFFT.
 ///
 /// Note: Assumes image dimensions are powers of 2.
-pub fn fft_image(in_path: &str, filter: bool) -> Result<(), String> {
-    let image = Image::from_file(in_path)?;
+pub fn fft_image(image: &Image, filter: bool) -> Result<(), String> {
     let dims = image.dimensions;
 
     let report_elapsed = |time: time::Instant| {

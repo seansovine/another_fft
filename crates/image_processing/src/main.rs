@@ -17,6 +17,8 @@ pub enum Command {
     Resize(ResizeArgs),
     Grayscale,
     Fft(FftArgs),
+    Convolve,
+    Sobel,
 }
 
 #[derive(Debug, Args)]
@@ -37,12 +39,26 @@ fn main() -> Result<(), String> {
     let args = CliArgs::parse();
     let path = &args.path;
 
+    let image = image_processing::Image::from_file(path)?;
+
     match args.command {
         Command::Resize(args) => {
-            image_processing::basic_ops::resize(path, args.new_width, args.new_height)?
+            image_processing::basic_ops::resize(&image, args.new_width, args.new_height)?;
         }
-        Command::Grayscale => image_processing::basic_ops::to_grayscale(&args.path)?,
-        Command::Fft(args) => image_processing::fft::fft_image(path, args.filter)?,
+        Command::Grayscale => {
+            image_processing::basic_ops::to_grayscale(image)?;
+        }
+        Command::Fft(args) => {
+            image_processing::fft::fft_image(&image, args.filter)?;
+        }
+        Command::Convolve => {
+            // choose this as an example; add arg later
+            let kernel = image_processing::convolution::Kernel3X3::sobel_y();
+            image_processing::convolution::convolve_3x3(&image, kernel);
+        }
+        Command::Sobel => {
+            image_processing::convolution::sobel(&image);
+        }
     }
 
     Ok(())

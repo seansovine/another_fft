@@ -1,6 +1,7 @@
 // top-level library module
 
 pub mod basic_ops;
+pub mod convolution;
 pub mod fft;
 
 use image::{ImageBuffer, Rgba};

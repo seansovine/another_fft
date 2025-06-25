@@ -7,8 +7,7 @@ use crate::Image;
 // Initially we'll use this to resize an image to power of two dimensions
 // so we can apply the 2-dimensional FFT to it.
 
-pub fn resize(in_path: &str, new_width: usize, new_height: usize) -> Result<(), String> {
-    let image = Image::from_file(in_path)?;
+pub fn resize(image: &Image, new_width: usize, new_height: usize) -> Result<(), String> {
     println!("Image loaded successfully!");
     println!("Dimensions: {:?}", image.dimensions);
 
@@ -40,8 +39,7 @@ pub fn resize(in_path: &str, new_width: usize, new_height: usize) -> Result<(), 
 
 // Convert image pixels to grayscale but still RGBA representation.
 
-pub fn to_grayscale(in_path: &str) -> Result<(), String> {
-    let mut image = Image::from_file(in_path)?;
+pub fn to_grayscale(mut image: Image) -> Result<(), String> {
     let dims = image.dimensions;
 
     println!("Image loaded successfully!");
