@@ -6,6 +6,7 @@
 use another_fft::fft_2d_para;
 
 use image::{ImageBuffer, Rgba};
+use rayon::ThreadPool;
 use std::time;
 
 use crate::Image;
@@ -14,8 +15,10 @@ use crate::Image;
 /// the image by applying IFFT.
 ///
 /// Note: Assumes image dimensions are powers of 2.
-pub fn fft_image(image: &Image, filter: bool) -> Result<(), String> {
+pub fn fft_image(image: &Image, filter: bool, pool: &ThreadPool) -> Result<(), String> {
     let dims = image.dimensions;
+
+    println!("> Image width and height: ({}, {})", dims.0, dims.1);
 
     let report_elapsed = |time: time::Instant| {
         let elapsed = time.elapsed().as_secs_f32();
@@ -24,20 +27,13 @@ pub fn fft_image(image: &Image, filter: bool) -> Result<(), String> {
 
     //// setup for parallel FFT
 
-    println!("Performing initial setup.");
+    println!("Doing initial setup for parallel FFT.");
 
     let time = time::Instant::now();
-    let num_threads = num_cpus::get();
-    let pool = rayon::ThreadPoolBuilder::new()
-        .num_threads(num_threads)
-        .build()
-        .unwrap();
-
     // pre-allocate working space for the parallel FFT code
     let mut working_buffer: Vec<f64> = vec![0.0_f64; 2 * dims.0 as usize * dims.1 as usize];
 
     report_elapsed(time);
-    println!("> Image width and height: ({}, {})", dims.0, dims.1);
 
     //// forward fft
 
@@ -56,7 +52,7 @@ pub fn fft_image(image: &Image, filter: bool) -> Result<(), String> {
         &mut working_buffer,
         grayscale_data.dimensions,
         false,
-        &pool,
+        pool,
     );
 
     report_elapsed(time);
@@ -117,7 +113,7 @@ pub fn fft_image(image: &Image, filter: bool) -> Result<(), String> {
         &mut working_buffer,
         grayscale_data.dimensions,
         true,
-        &pool,
+        pool,
     );
 
     report_elapsed(time);

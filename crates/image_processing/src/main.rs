@@ -1,6 +1,7 @@
 // CLI for image processing crate that uses another_fft
 
 use clap::{Args, Parser, Subcommand};
+use std::time;
 
 // setup command line args
 
@@ -41,6 +42,20 @@ fn main() -> Result<(), String> {
 
     let image = image_processing::Image::from_file(path)?;
 
+    println!("Performing initial setup.");
+
+    let time = time::Instant::now();
+    let num_threads = num_cpus::get();
+    let thread_pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(num_threads)
+        .build()
+        .unwrap();
+
+    println!(
+        "... Rayon setup took {:>2.3}s",
+        time.elapsed().as_secs_f32()
+    );
+
     match args.command {
         Command::Resize(args) => {
             image_processing::basic_ops::resize(&image, args.new_width, args.new_height)?;
@@ -49,7 +64,7 @@ fn main() -> Result<(), String> {
             image_processing::basic_ops::to_grayscale(image)?;
         }
         Command::Fft(args) => {
-            image_processing::fft::fft_image(&image, args.filter)?;
+            image_processing::fft::fft_image(&image, args.filter, &thread_pool)?;
         }
         Command::Convolve => {
             // choose this as an example; add arg later
@@ -57,7 +72,7 @@ fn main() -> Result<(), String> {
             image_processing::convolution::convolve_3x3(&image, kernel);
         }
         Command::Sobel => {
-            image_processing::convolution::sobel(&image);
+            image_processing::convolution::sobel(&image, &thread_pool);
         }
     }
 
