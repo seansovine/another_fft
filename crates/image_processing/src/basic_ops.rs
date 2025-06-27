@@ -2,16 +2,10 @@
 
 use crate::ImageProcessor;
 
-// Use the image crate to resize an image.
-//
-// Initially we'll use this to resize an image to power of two dimensions
-// so we can apply the 2-dimensional FFT to it.
-
+/// Use the image crate to resize image.
 pub fn resize(image: &ImageProcessor, new_width: usize, new_height: usize) -> Result<(), String> {
     println!("Image loaded successfully!");
     println!("Dimensions: {:?}", image.dimensions);
-
-    // let new_dimensions: (u32, u32) = (8192, 4096);
 
     println!("Resizing image...");
 
@@ -32,13 +26,10 @@ pub fn resize(image: &ImageProcessor, new_width: usize, new_height: usize) -> Re
         .save_with_format(OUTPATH, image::ImageFormat::Jpeg)
         .unwrap();
 
-    // view result: wgpu_grapher image --path test/resized.jpg
-
     Ok(())
 }
 
-// Convert image pixels to grayscale but still RGBA representation.
-
+/// Convert image pixels to grayscale but still in RGBA format.
 pub fn to_grayscale(mut image: ImageProcessor) -> Result<(), String> {
     let dims = image.dimensions;
 

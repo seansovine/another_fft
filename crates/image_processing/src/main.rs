@@ -51,8 +51,8 @@ fn main() -> Result<(), String> {
             image_processing::fft::fft_image(&image_processor, args.filter)?;
         }
         Command::Convolve => {
-            // choose this as an example; add arg later
-            let kernel = image_processing::convolution::Kernel3X3::sobel_y();
+            // hard code for now; add arg later
+            let kernel = image_processing::convolution::Kernel3X3::avg();
             image_processing::convolution::convolve_3x3(&image_processor, kernel);
         }
         Command::Sobel => {

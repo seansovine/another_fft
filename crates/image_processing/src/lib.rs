@@ -12,6 +12,7 @@ pub struct ImageProcessor {
     pub image: ImageBuffer<Rgba<u8>, Vec<u8>>,
     pub dimensions: (u32, u32),
 
+    // Rayon thread pool for parallel image operations
     pub thread_pool: ThreadPool,
 }
 
@@ -24,22 +25,11 @@ impl ImageProcessor {
         let image = image::load_from_memory(&image_bytes).unwrap().to_rgba8();
         let dimensions = image.dimensions();
 
-        #[cfg(feature = "timing")]
-        println!("Performing initial setup.");
-        #[cfg(feature = "timing")]
-        let time = time::Instant::now();
-
         let num_threads = num_cpus::get();
         let thread_pool = rayon::ThreadPoolBuilder::new()
             .num_threads(num_threads)
             .build()
             .unwrap();
-
-        #[cfg(feature = "timing")]
-        println!(
-            "... Rayon setup took {:>2.3}s",
-            time.elapsed().as_secs_f32()
-        );
 
         Ok(Self {
             image,

@@ -15,13 +15,14 @@ pub struct Kernel3X3 {
     m: [[f32; 3]; 3],
 }
 
+#[rustfmt::skip]
 impl Kernel3X3 {
     pub fn sobel_x() -> Self {
         Self {
             m: [
-                [-1.0, 0.0, 1.0], //
-                [-2.0, 0.0, 2.0], //
-                [-1.0, 0.0, 1.0], //
+                [-1.0, 0.0, 1.0],
+                [-2.0, 0.0, 2.0],
+                [-1.0, 0.0, 1.0]
             ],
         }
     }
@@ -29,10 +30,16 @@ impl Kernel3X3 {
     pub fn sobel_y() -> Self {
         Self {
             m: [
-                [-1.0, -2.0, -1.0], //
-                [0.0, 0.0, 0.0],    //
-                [1.0, 2.0, 1.0],    //
+                [-1.0, -2.0, -1.0],
+                [ 0.0,  0.0,  0.0],
+                [ 1.0,  2.0,  1.0]
             ],
+        }
+    }
+
+    pub fn avg() -> Self {
+        Self {
+            m: [[1.0 / 9.0; 3]; 3],
         }
     }
 }
@@ -51,29 +58,59 @@ pub fn convolve_3x3(image: &ImageProcessor, kernel: Kernel3X3) {
     let buf = &image.image;
     let m = &kernel.m;
 
-    // 3x3 convolution written out by hand, w/ abs. value
+    // 3x3 convolution written out by hand, w/ abs. val. and clamp
     for i in 1..(width - 1) {
         for j in 1..(height - 1) {
             for chan in 0..3 {
-                out_image[(i, j)][chan] = (
-                    //
-                    m[0][0] * buf[(i + 1, j + 1)][chan] as f32
-                        + m[0][1] * buf[(i + 1, j)][chan] as f32
-                        + m[0][2] * buf[(i + 1, j - 1)][chan] as f32
-                        + m[1][0] * buf[(i, j + 1)][chan] as f32
-                        + m[1][1] * buf[(i, j)][chan] as f32
-                        + m[1][2] * buf[(i, j - 1)][chan] as f32
-                        + m[2][0] * buf[(i - 1, j + 1)][chan] as f32
-                        + m[2][1] * buf[(i - 1, j)][chan] as f32
-                        + m[2][2] * buf[(i - 1, j - 1)][chan] as f32
-                )
+                out_image[(i, j)][chan] = (m[0][0] * buf[(i + 1, j + 1)][chan] as f32
+                    + m[0][1] * buf[(i + 1, j)][chan] as f32
+                    + m[0][2] * buf[(i + 1, j - 1)][chan] as f32
+                    + m[1][0] * buf[(i, j + 1)][chan] as f32
+                    + m[1][1] * buf[(i, j)][chan] as f32
+                    + m[1][2] * buf[(i, j - 1)][chan] as f32
+                    + m[2][0] * buf[(i - 1, j + 1)][chan] as f32
+                    + m[2][1] * buf[(i - 1, j)][chan] as f32
+                    + m[2][2] * buf[(i - 1, j - 1)][chan] as f32)
                     .abs()
                     .clamp(0.0, 255.0) as u8;
             }
         }
     }
 
-    // TODO: implement outside border convolution
+    // do border convolution
+
+    // clamp coordinates at edges, effectively constant continuation
+    let cl = |x: u32, y: u32| (x.clamp(0, width - 1), y.clamp(0, height - 1));
+
+    let conv = |i: u32, j: u32, chan: usize| {
+        (m[0][0] * buf[cl(i + 1, j + 1)][chan] as f32
+            + m[0][1] * buf[cl(i + 1, j)][chan] as f32
+            + m[0][2] * buf[cl(i + 1, j - 1)][chan] as f32
+            + m[1][0] * buf[cl(i, j + 1)][chan] as f32
+            + m[1][1] * buf[cl(i, j)][chan] as f32
+            + m[1][2] * buf[cl(i, j - 1)][chan] as f32
+            + m[2][0] * buf[cl(i - 1, j + 1)][chan] as f32
+            + m[2][1] * buf[cl(i - 1, j)][chan] as f32
+            + m[2][2] * buf[cl(i - 1, j - 1)][chan] as f32)
+            .abs()
+            .clamp(0.0, 255.0) as u8
+    };
+
+    for y in [0, height - 1] {
+        for x in 0..width {
+            for chan in 0..3 {
+                out_image[(x, y)][chan] = conv(x, y, chan);
+            }
+        }
+    }
+
+    for x in [0, width - 1] {
+        for y in 0..height {
+            for chan in 0..3 {
+                out_image[(x, y)][chan] = conv(x, y, chan);
+            }
+        }
+    }
 
     const OUT_IMAGE_PATH: &str = "test_data/convolution.jpeg";
 
@@ -84,9 +121,10 @@ pub fn convolve_3x3(image: &ImageProcessor, kernel: Kernel3X3) {
 
 #[allow(unused)]
 pub struct ImageMatrix {
-    // data stored row major
+    // data stored row major, in blocks of channels bytes
     m: Vec<u8>,
 
+    // image dimensions and number of channels
     width: usize,
     height: usize,
     channels: usize,
@@ -95,7 +133,7 @@ pub struct ImageMatrix {
 impl ImageMatrix {
     pub fn new(width: usize, height: usize, channels: usize, initializer: u8) -> Self {
         Self {
-            // NOTE: we could pad rows to ensure cache alignment
+            // could pad rows for cache alignment if useful
             m: vec![initializer; width * height * channels],
             width,
             height,
@@ -108,16 +146,15 @@ impl ImageMatrix {
     }
 }
 
+/// indexed by row, column, channel
 impl Index<(usize, usize, usize)> for ImageMatrix {
     type Output = u8;
-    // index is (row, column, channel)
     fn index(&self, index: (usize, usize, usize)) -> &Self::Output {
         &self.m[self.channels * (index.0 * self.width + index.1) + index.2]
     }
 }
 
 impl IndexMut<(usize, usize, usize)> for ImageMatrix {
-    // index is (row, column, channel)
     fn index_mut(&mut self, index: (usize, usize, usize)) -> &mut Self::Output {
         &mut self.m[self.channels * (index.0 * self.width + index.1) + index.2]
     }
@@ -181,6 +218,7 @@ pub fn sobel(image: &ImageProcessor, threshold: u8) {
 
             let y_off_im = (i * chunk_size_rows) as u32;
 
+            // convolution operations written out by hand
             for y in slice_begin_row..slice_end_row {
                 for x in 1..(width - 1) {
                     for chan in 0..3 {
@@ -204,7 +242,7 @@ pub fn sobel(image: &ImageProcessor, threshold: u8) {
                             + m_y[2][1] * buf[(x - 1, y_off_im + y)][chan] as f32
                             + m_y[2][2] * buf[(x - 1, y_off_im + y - 1)][chan] as f32;
 
-                        // note: matrix index is (row, column) vs. (x, y)
+                        // matrix index is (row, column) vs. (x, y) for image
                         chunk[flat_index((y as usize, x as usize, chan))] =
                             thresh((o_x.powi(2) + o_y.powi(2)).sqrt().clamp(0.0, 255.0) as u8);
                     }
@@ -216,7 +254,7 @@ pub fn sobel(image: &ImageProcessor, threshold: u8) {
 
     // do border convolutions
 
-    // we act as if the image were constant outside the border
+    // clamp coordinates at edges, effectively constant continuation
     let clamp = |x: u32, y: u32| (x.clamp(0, width - 1), y.clamp(0, height - 1));
 
     let directional_derivs = |x: u32, y: u32, chan: usize| {
@@ -247,8 +285,6 @@ pub fn sobel(image: &ImageProcessor, threshold: u8) {
         for x in 0..width {
             for chan in 0..3 {
                 let (o_x, o_y) = directional_derivs(x, y, chan);
-
-                // note: matrix index is (row, column) vs. (x, y)
                 matrix[(y as usize, x as usize, chan)] =
                     thresh((o_x.powi(2) + o_y.powi(2)).sqrt().clamp(0.0, 255.0) as u8);
             }
@@ -259,8 +295,6 @@ pub fn sobel(image: &ImageProcessor, threshold: u8) {
         for y in 0..height {
             for chan in 0..3 {
                 let (o_x, o_y) = directional_derivs(x, y, chan);
-
-                // note: matrix index is (row, column) vs. (x, y)
                 matrix[(y as usize, x as usize, chan)] =
                     thresh((o_x.powi(2) + o_y.powi(2)).sqrt().clamp(0.0, 255.0) as u8);
             }
