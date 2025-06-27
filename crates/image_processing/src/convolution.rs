@@ -2,10 +2,9 @@
 //
 // This version is not optimized.
 
-use crate::Image;
+use crate::ImageProcessor;
 use image::{ImageBuffer, Rgba};
 use rayon::{
-    ThreadPool,
     iter::{IndexedParallelIterator, ParallelIterator},
     slice::ParallelSliceMut,
 };
@@ -38,7 +37,7 @@ impl Kernel3X3 {
     }
 }
 
-pub fn convolve_3x3(image: &Image, kernel: Kernel3X3) {
+pub fn convolve_3x3(image: &ImageProcessor, kernel: Kernel3X3) {
     let width = image.dimensions.0;
     let height = image.dimensions.1;
 
@@ -129,7 +128,8 @@ fn report_elapsed(time: time::Instant) {
     println!("... {:>2.3}s", elapsed);
 }
 
-pub fn sobel(image: &Image, thread_pool: &ThreadPool) {
+pub fn sobel(image: &ImageProcessor) {
+    let thread_pool = &image.thread_pool;
     let width = image.dimensions.0;
     let height = image.dimensions.1;
 
@@ -210,7 +210,58 @@ pub fn sobel(image: &Image, thread_pool: &ThreadPool) {
 
     report_elapsed(time);
 
-    // TODO: implement outside border convolution
+    // do border convolutions
+
+    // we act as if the image were constant outside the border
+    let clamp = |x: u32, y: u32| (x.clamp(0, width - 1), y.clamp(0, height - 1));
+
+    let directional_derivs = |x: u32, y: u32, chan: usize| {
+        let o_x = m_x[0][0] * buf[clamp(x + 1, y + 1)][chan] as f32
+            + m_x[0][1] * buf[clamp(x + 1, y)][chan] as f32
+            + m_x[0][2] * buf[clamp(x + 1, y - 1)][chan] as f32
+            + m_x[1][0] * buf[clamp(x, y + 1)][chan] as f32
+            + m_x[1][1] * buf[clamp(x, y)][chan] as f32
+            + m_x[1][2] * buf[clamp(x, y - 1)][chan] as f32
+            + m_x[2][0] * buf[clamp(x - 1, y + 1)][chan] as f32
+            + m_x[2][1] * buf[clamp(x - 1, y)][chan] as f32
+            + m_x[2][2] * buf[clamp(x - 1, y - 1)][chan] as f32;
+
+        let o_y = m_y[0][0] * buf[clamp(x + 1, y + 1)][chan] as f32
+            + m_y[0][1] * buf[clamp(x + 1, y)][chan] as f32
+            + m_y[0][2] * buf[clamp(x + 1, y - 1)][chan] as f32
+            + m_y[1][0] * buf[clamp(x, y + 1)][chan] as f32
+            + m_y[1][1] * buf[clamp(x, y)][chan] as f32
+            + m_y[1][2] * buf[clamp(x, y - 1)][chan] as f32
+            + m_y[2][0] * buf[clamp(x - 1, y + 1)][chan] as f32
+            + m_y[2][1] * buf[clamp(x - 1, y)][chan] as f32
+            + m_y[2][2] * buf[clamp(x - 1, y - 1)][chan] as f32;
+
+        (o_x, o_y)
+    };
+
+    for y in [0, height - 1] {
+        for x in 0..width {
+            for chan in 0..3 {
+                let (o_x, o_y) = directional_derivs(x, y, chan);
+
+                // note: matrix index is (row, column) vs. (x, y)
+                matrix[(y as usize, x as usize, chan)] =
+                    (o_x.powi(2) + o_y.powi(2)).sqrt().clamp(0.0, 255.0) as u8;
+            }
+        }
+    }
+
+    for x in [0, width - 1] {
+        for y in 0..height {
+            for chan in 0..3 {
+                let (o_x, o_y) = directional_derivs(x, y, chan);
+
+                // note: matrix index is (row, column) vs. (x, y)
+                matrix[(y as usize, x as usize, chan)] =
+                    (o_x.powi(2) + o_y.powi(2)).sqrt().clamp(0.0, 255.0) as u8;
+            }
+        }
+    }
 
     let out_image =
         ImageBuffer::<Rgba<u8>, Vec<u8>>::from_raw(width, height, matrix.to_vec()).unwrap();

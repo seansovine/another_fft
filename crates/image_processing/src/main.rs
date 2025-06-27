@@ -1,7 +1,6 @@
 // CLI for image processing crate that uses another_fft
 
 use clap::{Args, Parser, Subcommand};
-use std::time;
 
 // setup command line args
 
@@ -39,40 +38,25 @@ pub struct FftArgs {
 fn main() -> Result<(), String> {
     let args = CliArgs::parse();
     let path = &args.path;
-
-    let image = image_processing::Image::from_file(path)?;
-
-    println!("Performing initial setup.");
-
-    let time = time::Instant::now();
-    let num_threads = num_cpus::get();
-    let thread_pool = rayon::ThreadPoolBuilder::new()
-        .num_threads(num_threads)
-        .build()
-        .unwrap();
-
-    println!(
-        "... Rayon setup took {:>2.3}s",
-        time.elapsed().as_secs_f32()
-    );
+    let image_processor = image_processing::ImageProcessor::from_path(path)?;
 
     match args.command {
         Command::Resize(args) => {
-            image_processing::basic_ops::resize(&image, args.new_width, args.new_height)?;
+            image_processing::basic_ops::resize(&image_processor, args.new_width, args.new_height)?;
         }
         Command::Grayscale => {
-            image_processing::basic_ops::to_grayscale(image)?;
+            image_processing::basic_ops::to_grayscale(image_processor)?;
         }
         Command::Fft(args) => {
-            image_processing::fft::fft_image(&image, args.filter, &thread_pool)?;
+            image_processing::fft::fft_image(&image_processor, args.filter)?;
         }
         Command::Convolve => {
             // choose this as an example; add arg later
             let kernel = image_processing::convolution::Kernel3X3::sobel_y();
-            image_processing::convolution::convolve_3x3(&image, kernel);
+            image_processing::convolution::convolve_3x3(&image_processor, kernel);
         }
         Command::Sobel => {
-            image_processing::convolution::sobel(&image, &thread_pool);
+            image_processing::convolution::sobel(&image_processor);
         }
     }
 

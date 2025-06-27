@@ -6,17 +6,17 @@
 use another_fft::fft_2d_para;
 
 use image::{ImageBuffer, Rgba};
-use rayon::ThreadPool;
 use std::time;
 
-use crate::Image;
+use crate::ImageProcessor;
 
 /// Compute image FFT, possibly apply Fourier-side filter, and then recover
 /// the image by applying IFFT.
 ///
 /// Note: Assumes image dimensions are powers of 2.
-pub fn fft_image(image: &Image, filter: bool, pool: &ThreadPool) -> Result<(), String> {
+pub fn fft_image(image: &ImageProcessor, filter: bool) -> Result<(), String> {
     let dims = image.dimensions;
+    let pool = &image.thread_pool;
 
     println!("> Image width and height: ({}, {})", dims.0, dims.1);
 
@@ -141,7 +141,6 @@ pub fn fft_image(image: &Image, filter: bool, pool: &ThreadPool) -> Result<(), S
 
 /// Represents the raw data of a grayscale image as an array
 /// of complex floats, for use as input to the FFT function.
-#[derive(Debug)]
 struct GrayscaleImageData {
     complex_data: Vec<f64>,
     dimensions: (usize, usize),

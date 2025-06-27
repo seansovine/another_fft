@@ -13,3 +13,6 @@ rayon = "1.10.0"
 version = "0.24"
 default-features = false
 features = ["png", "jpeg"]
+
+[features]
+timing = []
