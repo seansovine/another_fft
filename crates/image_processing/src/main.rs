@@ -56,7 +56,9 @@ fn main() -> Result<(), String> {
             image_processing::convolution::convolve_3x3(&image_processor, kernel);
         }
         Command::Sobel => {
-            image_processing::convolution::sobel(&image_processor);
+            // hard code for now; add arg later
+            let threshold: u8 = 75;
+            image_processing::convolution::sobel(&image_processor, threshold);
         }
     }
 

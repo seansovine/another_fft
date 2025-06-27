@@ -128,7 +128,7 @@ fn report_elapsed(time: time::Instant) {
     println!("... {:>2.3}s", elapsed);
 }
 
-pub fn sobel(image: &ImageProcessor) {
+pub fn sobel(image: &ImageProcessor, threshold: u8) {
     let thread_pool = &image.thread_pool;
     let width = image.dimensions.0;
     let height = image.dimensions.1;
@@ -160,6 +160,10 @@ pub fn sobel(image: &ImageProcessor) {
 
     let flat_index = |index: (usize, usize, usize)| {
         NUM_CHANNELS * (index.0 * width as usize + index.1) + index.2
+    };
+
+    let thresh = |v: u8| {
+        if v <= threshold { 0 } else { v }
     };
 
     matrix
@@ -202,7 +206,7 @@ pub fn sobel(image: &ImageProcessor) {
 
                         // note: matrix index is (row, column) vs. (x, y)
                         chunk[flat_index((y as usize, x as usize, chan))] =
-                            (o_x.powi(2) + o_y.powi(2)).sqrt().clamp(0.0, 255.0) as u8;
+                            thresh((o_x.powi(2) + o_y.powi(2)).sqrt().clamp(0.0, 255.0) as u8);
                     }
                 }
             }
@@ -246,7 +250,7 @@ pub fn sobel(image: &ImageProcessor) {
 
                 // note: matrix index is (row, column) vs. (x, y)
                 matrix[(y as usize, x as usize, chan)] =
-                    (o_x.powi(2) + o_y.powi(2)).sqrt().clamp(0.0, 255.0) as u8;
+                    thresh((o_x.powi(2) + o_y.powi(2)).sqrt().clamp(0.0, 255.0) as u8);
             }
         }
     }
@@ -258,7 +262,7 @@ pub fn sobel(image: &ImageProcessor) {
 
                 // note: matrix index is (row, column) vs. (x, y)
                 matrix[(y as usize, x as usize, chan)] =
-                    (o_x.powi(2) + o_y.powi(2)).sqrt().clamp(0.0, 255.0) as u8;
+                    thresh((o_x.powi(2) + o_y.powi(2)).sqrt().clamp(0.0, 255.0) as u8);
             }
         }
     }
