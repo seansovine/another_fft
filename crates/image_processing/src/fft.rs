@@ -78,11 +78,19 @@ pub fn fft_image(image: &ImageProcessor, filter: bool) -> Result<(), String> {
     if filter {
         println!("Applying filter to Fourier coefficients.");
 
-        // for now we hard-code the cutoff
-        const CUTOFF_RADIUS: f32 = 100.0;
-
         let time = time::Instant::now();
-        grayscale_data.apply_filter(CUTOFF_RADIUS);
+
+        // annular frequency domain cutoff
+        let filter_fn = |i: usize, j: usize| -> (f64, f64) {
+            let mag_sq = i.pow(2) + j.pow(2);
+
+            if 50_usize.pow(2) <= mag_sq && mag_sq <= 500_usize.pow(2) {
+                return (1.0, 0.0);
+            }
+
+            (0.0, 0.0)
+        };
+        grayscale_data.apply_filter_generic(filter_fn);
 
         report_elapsed(time);
         println!("Converting filtered FFT to image format.");
@@ -214,6 +222,7 @@ impl GrayscaleImageData {
 
     /// For now we implement a high-pass filter; we can implement other
     /// filter types later and then make this function more generic.
+    #[allow(unused)]
     fn apply_filter(&mut self, cutoff_radius: f32) {
         let width = self.dimensions.0;
         let height = self.dimensions.1;
@@ -234,6 +243,35 @@ impl GrayscaleImageData {
                     self.complex_data[offset] = 0.0;
                     self.complex_data[offset + 1] = 0.0;
                 }
+            }
+        }
+    }
+
+    /// For now we implement a high-pass filter; we can implement other
+    /// filter types later and then make this function more generic.
+    fn apply_filter_generic<F>(&mut self, filter_fn: F)
+    where
+        F: Fn(usize, usize) -> (f64, f64),
+    {
+        let width = self.dimensions.0;
+        let height = self.dimensions.1;
+
+        // apply circular cutoff around Fourier origin
+        for i in 0..height {
+            for j in 0..width {
+                // we want distance from 0 including wraparound
+                let i_signed = ((i + height / 2) % height) - height / 2;
+                let j_signed = ((j + width / 2) % width) - width / 2;
+
+                let offset = 2 * (i * width + j);
+
+                let re = self.complex_data[offset];
+                let im = self.complex_data[offset + 1];
+
+                let (re_f, im_f) = filter_fn(i_signed, j_signed);
+
+                self.complex_data[offset] = re * re_f - im * im_f;
+                self.complex_data[offset + 1] = re * im_f + im * re_f;
             }
         }
     }
