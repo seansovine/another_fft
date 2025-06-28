@@ -81,7 +81,8 @@ pub fn fft_image(image: &ImageProcessor, filter: bool) -> Result<(), String> {
         let time = time::Instant::now();
 
         // annular frequency domain cutoff
-        let filter_fn = |i: usize, j: usize| -> (f64, f64) {
+        #[allow(unused)]
+        let annular_cutoff = |i: usize, j: usize| -> (f64, f64) {
             let mag_sq = i.pow(2) + j.pow(2);
 
             if 50_usize.pow(2) <= mag_sq && mag_sq <= 500_usize.pow(2) {
@@ -90,7 +91,19 @@ pub fn fft_image(image: &ImageProcessor, filter: bool) -> Result<(), String> {
 
             (0.0, 0.0)
         };
-        grayscale_data.apply_filter_generic(filter_fn);
+
+        // linearly boost higher frequencies for sharpening effect
+        let linear_sharpen = |i: usize, j: usize| -> (f64, f64) {
+            let mag_sq = i.pow(2) + j.pow(2);
+
+            if 500_usize.pow(2) <= mag_sq {
+                return (((mag_sq as f64).sqrt() / 1000.0 + 1.0), 0.0);
+            }
+
+            (1.0, 0.0)
+        };
+
+        grayscale_data.apply_filter_generic(linear_sharpen);
 
         report_elapsed(time);
         println!("Converting filtered FFT to image format.");
@@ -247,8 +260,7 @@ impl GrayscaleImageData {
         }
     }
 
-    /// For now we implement a high-pass filter; we can implement other
-    /// filter types later and then make this function more generic.
+    /// Apply filter_fn to the fourier coefficients held by this struct.
     fn apply_filter_generic<F>(&mut self, filter_fn: F)
     where
         F: Fn(usize, usize) -> (f64, f64),
