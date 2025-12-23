@@ -34,7 +34,7 @@ Here are some examples of images with their FTs:
 In fact the images shown are the magnitudes of the Fourier coefficients, which are in general complex,
 and the images are converted to grayscale before the FT is taken.
 
-__Filtering:__
+**Frequency space filtering:**
 
 I've also implemented a basic Fourier-space filter, as an example of the kinds of things that can be done.
 This allows us to apply a multiplier to the Fourier coefficients of the image.
@@ -55,3 +55,26 @@ origin represent more slowly-oscillating frequency components in the image.
 
 One common application in image processing would be to add a multiple of the high-pass image back to
 the original image to produce a sharpening effect.
+
+**Sobel filter:**
+
+This is one of my favorite image operations, for historical reasons. It computes the magnitude
+of a smoothed estimate of the gradient of the image at each pixel. It can be used as an input to edge
+detection algorithms, because its output will be bright in places where the image is changing quickly,
+as you can see in the example below. We have a Sobel implementation in
+[`convolution.rs`](./crates/image_processing/src/convolution.rs).
+
+<p align="center" margin="20px">
+        <img src="https://github.com/seansovine/page_images/blob/main/image_processing/sobel_rgba.jpeg?raw=true" alt="drawing" width="600" style="padding-top: 15px; padding-bottom: 10px"/>
+</p>
+
+The Sobel operator is implemented as a combination of two convolution operations (see [Wikipedia](https://en.wikipedia.org/wiki/Sobel_operator)).
+Optimizing a 2d convolution operation on a CPU is a difficult problem (see [this](https://ieeexplore.ieee.org/document/9765671), for example).
+The version here is not highly optimized, except that we break the image into horizontal
+bands and convolve each band in parallel, and we perform the border convolution separately to
+reduce branching in the main convolution loop.
+
+We might put some thought into further optimizations
+later. One fairly straightforward such optimization would be to use the fact that the kernels involved
+can be split into a convolution of column and row kernels, so the convolutions can be performed as
+successive simpler convolutions.
