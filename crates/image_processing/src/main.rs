@@ -19,6 +19,7 @@ pub enum Command {
     Fft(FftArgs),
     Convolve,
     Sobel,
+    OptTest,
 }
 
 #[derive(Debug, Args)]
@@ -36,6 +37,7 @@ pub struct FftArgs {
 }
 
 fn main() -> Result<(), String> {
+    env_logger::init();
     let args = CliArgs::parse();
     let path = &args.path;
     let image_processor = image_processing::ImageProcessor::from_path(path)?;
@@ -45,7 +47,7 @@ fn main() -> Result<(), String> {
             image_processing::basic_ops::resize(&image_processor, args.new_width, args.new_height)?;
         }
         Command::Grayscale => {
-            image_processing::basic_ops::to_grayscale(image_processor)?;
+            image_processing::basic_ops::save_grayscale(image_processor)?;
         }
         Command::Fft(args) => {
             image_processing::fft::fft_image(&image_processor, args.filter)?;
@@ -59,6 +61,9 @@ fn main() -> Result<(), String> {
             // hard code for now; add arg later
             let threshold: u8 = 75;
             image_processing::convolution::sobel(&image_processor, threshold);
+        }
+        Command::OptTest => {
+            image_processing::convolution::sobel_x_optimized(&image_processor);
         }
     }
 

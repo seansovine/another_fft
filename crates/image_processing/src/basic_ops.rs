@@ -1,5 +1,7 @@
 // Basic image operations like resize, grayscale.
 
+use image::{ImageBuffer, Rgba};
+
 use crate::ImageProcessor;
 
 /// Use the image crate to resize image.
@@ -29,23 +31,23 @@ pub fn resize(image: &ImageProcessor, new_width: usize, new_height: usize) -> Re
     Ok(())
 }
 
+fn pixel_to_grayscale(p: &[u8]) -> u8 {
+    ((p[0] as f64 * 0.299) + (p[1] as f64 * 0.587) + (p[2] as f64 * 0.114)) as u8
+}
+
 /// Convert image pixels to grayscale but still in RGBA format.
-pub fn to_grayscale(mut image: ImageProcessor) -> Result<(), String> {
+pub fn save_grayscale(mut image: ImageProcessor) -> Result<(), String> {
     let dims = image.dimensions;
 
     println!("Image loaded successfully!");
     println!("Dimensions: {:?}", image.dimensions);
-
-    let to_grayscale = |p: &[u8]| -> u8 {
-        ((p[0] as f64 * 0.299) + (p[1] as f64 * 0.587) + (p[2] as f64 * 0.114)) as u8
-    };
 
     println!("Converting image to grayscale (RGBA)...");
 
     for i in 0..dims.0 {
         for j in 0..dims.1 {
             let pixel = &mut image.image[(i, j)].0;
-            let grayscale_val = to_grayscale(pixel);
+            let grayscale_val = pixel_to_grayscale(pixel);
 
             pixel[0] = grayscale_val;
             pixel[1] = grayscale_val;
@@ -63,7 +65,17 @@ pub fn to_grayscale(mut image: ImageProcessor) -> Result<(), String> {
         .save_with_format(OUTPATH, image::ImageFormat::Jpeg)
         .unwrap();
 
-    // view result: wgpu_grapher image --path test/grayscale.jpg
-
     Ok(())
+}
+
+pub fn grayscale_bytes(image: &ImageBuffer<Rgba<u8>, Vec<u8>>) -> Vec<u8> {
+    let mut out_buffer = vec![0; image.height() as usize * image.width() as usize];
+    let image_width = image.width();
+    for i in 0..image.height() {
+        for j in 0..image_width {
+            let pixel = &image[(j, i)].0;
+            out_buffer[(i * image_width + j) as usize] = pixel_to_grayscale(pixel);
+        }
+    }
+    out_buffer
 }
