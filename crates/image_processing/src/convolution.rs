@@ -350,39 +350,72 @@ fn naive_sobel_x(height: usize, width: usize, image: &[u8], output: &mut [u8]) {
 const CACHE_LINE_SIZE: usize = 64;
 
 /// Work-in-progress cache optimized implementation of the x-direction Sobel convolution.
-fn optimized_sobel_x(height: usize, width: usize, image: &[u8], output: &mut [f64]) {
+///
+/// Assumptions: That image and output are stored row-major, with rows of `width` entries,
+/// and that image contains two more rows than output.
+fn optimized_sobel_x(width: usize, image: &[u8], output: &mut [f64]) {
     assert!(width.is_multiple_of(CACHE_LINE_SIZE));
+    assert!(image.len() / width == output.len() / width + 2);
     let m_x = Kernel3X3::sobel_x().m;
+
+    // Top rows of input only contributes to two output rows.
+    for j in 0..width {
+        output[j + 1] += m_x[0][0] * image[j] as f64
+            + m_x[0][1] * image[j + 1] as f64
+            + m_x[0][2] * image[j + 2] as f64;
+    }
+    for j in width..2 * width {
+        output[j + 1] += m_x[0][0] * image[j] as f64
+            + m_x[0][1] * image[j + 1] as f64
+            + m_x[0][2] * image[j + 2] as f64;
+        output[j - width + 1] += m_x[1][0] * image[j] as f64
+            + m_x[1][1] * image[j + 1] as f64
+            + m_x[1][2] * image[j + 2] as f64;
+    }
     // (i, j) give start of data block we're applying matrix rows to.
-    for i in 1..height - 1 {
+    for i in 2..image.len() / width - 2 {
         for j in 0..(width / CACHE_LINE_SIZE) - 1 {
             let data_start = i * width + j * 64;
             let data = &image[data_start..];
             // Apply each row of kernel to this data chunk and save in appropriate image row.
             for k in 0..64 {
-                output[data_start + width + k + 1] += m_x[0][0] * data[k] as f64
+                output[data_start + k + 1] += m_x[0][0] * data[k] as f64
                     + m_x[0][1] * data[k + 1] as f64
                     + m_x[0][2] * data[k + 2] as f64;
-                output[data_start + k + 1] += m_x[1][0] * data[k] as f64
+                output[data_start - width + k + 1] += m_x[1][0] * data[k] as f64
                     + m_x[1][1] * data[k + 1] as f64
                     + m_x[1][2] * data[k + 2] as f64;
-                output[data_start - width + k + 1] += m_x[2][0] * data[k] as f64
+                output[data_start - 2 * width + k + 1] += m_x[2][0] * data[k] as f64
                     + m_x[2][1] * data[k + 1] as f64
                     + m_x[2][2] * data[k + 2] as f64;
             }
         }
         let data_start = i * width + width - 64;
-        for k in data_start..(i + 1) * width - 1 {
-            output[k + width + 1] += m_x[0][0] * image[k] as f64
+        for k in data_start..(i + 1) * width - 2 {
+            output[k + 1] += m_x[0][0] * image[k] as f64
                 + m_x[0][1] * image[k + 1] as f64
                 + m_x[0][2] * image[k + 2] as f64;
-            output[k + 1] += m_x[1][0] * image[k] as f64
+            output[k - width + 1] += m_x[1][0] * image[k] as f64
                 + m_x[1][1] * image[k + 1] as f64
                 + m_x[1][2] * image[k + 2] as f64;
-            output[k - width + 1] += m_x[2][0] * image[k] as f64
+            output[k - 2 * width + 1] += m_x[2][0] * image[k] as f64
                 + m_x[2][1] * image[k + 1] as f64
                 + m_x[2][2] * image[k + 2] as f64;
         }
+    }
+    // Bottom rows of input only apply to some rows of output.
+    for j in image.len() - 2 * width..image.len() - width - 2 {
+        output[j - width + 1] += m_x[1][0] * image[j] as f64
+            + m_x[1][1] * image[j + 1] as f64
+            + m_x[1][2] * image[j + 2] as f64;
+        output[j - 2 * width + 1] += m_x[2][0] * image[j] as f64
+            + m_x[2][1] * image[j + 1] as f64
+            + m_x[2][2] * image[j + 2] as f64;
+    }
+    for j in image.len() - width..image.len() - 2 {
+        output[j - 2 * width + 1] += m_x[2][0] * image[j] as f64
+            + m_x[2][1] * image[j + 1] as f64
+            + m_x[2][2] * image[j + 2] as f64;
     }
 }
 
@@ -413,10 +446,12 @@ pub fn sobel_x_optimized(image: &ImageProcessor) {
 
     let start = Instant::now();
     optimized_sobel_x(
-        padded_height,
         padded_width,
         &working_bytes,
-        &mut output_bytes,
+        // In parallel verson we'll take slice of output as last arg and
+        // slice of input with one row before and one row after same rows
+        // of output for second arg.
+        &mut output_bytes[padded_width..working_bytes.len() - padded_width],
     );
     log::info!(
         "Time to apply optimized sobel x convolution: {:?}.",
