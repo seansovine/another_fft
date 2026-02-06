@@ -5,15 +5,19 @@ use image::{ImageBuffer, Rgba};
 use crate::ImageProcessor;
 
 /// Use the image crate to resize image.
-pub fn resize(image: &ImageProcessor, new_width: usize, new_height: usize) -> Result<(), String> {
+pub fn save_resize(
+    image_proc: &ImageProcessor,
+    new_width: usize,
+    new_height: usize,
+) -> Result<(), String> {
     println!("Image loaded successfully!");
-    println!("Dimensions: {:?}", image.dimensions);
+    println!("Dimensions: {:?}", image_proc.dimensions);
 
     println!("Resizing image...");
 
     let resize_filter = image::imageops::FilterType::CatmullRom;
     let buffer = image::imageops::resize(
-        &image.image,
+        &image_proc.image,
         new_width as u32,
         new_height as u32,
         resize_filter,
@@ -23,9 +27,8 @@ pub fn resize(image: &ImageProcessor, new_width: usize, new_height: usize) -> Re
 
     // save resized image, to hard-coded file for now
 
-    const OUTPATH: &str = "test_data/resized.jpg";
     buffer
-        .save_with_format(OUTPATH, image::ImageFormat::Jpeg)
+        .save_with_format(&image_proc.output_path, image::ImageFormat::Jpeg)
         .unwrap();
 
     Ok(())
@@ -36,17 +39,17 @@ fn pixel_to_grayscale(p: &[u8]) -> u8 {
 }
 
 /// Convert image pixels to grayscale but still in RGBA format.
-pub fn save_grayscale(mut image: ImageProcessor) -> Result<(), String> {
-    let dims = image.dimensions;
+pub fn save_grayscale(mut image_proc: ImageProcessor) -> Result<(), String> {
+    let dims = image_proc.dimensions;
 
     println!("Image loaded successfully!");
-    println!("Dimensions: {:?}", image.dimensions);
+    println!("Dimensions: {:?}", image_proc.dimensions);
 
     println!("Converting image to grayscale (RGBA)...");
 
     for i in 0..dims.0 {
         for j in 0..dims.1 {
-            let pixel = &mut image.image[(i, j)].0;
+            let pixel = &mut image_proc.image[(i, j)].0;
             let grayscale_val = pixel_to_grayscale(pixel);
 
             pixel[0] = grayscale_val;
@@ -59,10 +62,9 @@ pub fn save_grayscale(mut image: ImageProcessor) -> Result<(), String> {
 
     // save grayscale image, to hard-coded file for now
 
-    const OUTPATH: &str = "test_data/grayscale.jpg";
-    image
+    image_proc
         .image
-        .save_with_format(OUTPATH, image::ImageFormat::Jpeg)
+        .save_with_format(&image_proc.output_path, image::ImageFormat::Jpeg)
         .unwrap();
 
     Ok(())

@@ -44,9 +44,11 @@ impl Kernel3X3 {
 ///
 /// Assumptions: That image and output are stored row-major, with rows of `width` entries,
 /// and that image contains two more rows than output.
+#[allow(dead_code)]
 fn optimized_sobel_op(width: usize, image: &[u8], output: &mut [f64]) {
     assert!(width.is_multiple_of(CACHE_LINE_SIZE));
     assert!(image.len() / width == output.len() / width + 2);
+
     let m_x = Kernel3X3::sobel_x().m;
     let m_y = Kernel3X3::sobel_y().m;
 
@@ -129,6 +131,70 @@ fn optimized_sobel_op(width: usize, image: &[u8], output: &mut [f64]) {
             + m_y[2][2] * image[j + 2] as f64;
     }
 
+    // Compute magnitude from image gradient components.
+    for (m_x, m_y) in output.iter_mut().zip(buffer.iter()) {
+        *m_x = (m_x.powi(2) + m_y.powi(2)).sqrt();
+    }
+}
+
+/// Attempts to use only linear writes to output buffer.
+/// It runs over the data three separate times, but it writes
+/// to the output buffers linearly, instead of in a strided way.
+///
+/// Results: It is just slightly slower than `optimized_sobel_op` in
+/// spite of doing three separate loops.
+#[allow(dead_code)]
+fn optimized_sobel_op_2(width: usize, image: &[u8], output: &mut [f64]) {
+    assert!(width.is_multiple_of(CACHE_LINE_SIZE));
+    assert!(image.len() / width == output.len() / width + 2);
+
+    let m_x = Kernel3X3::sobel_x().m;
+    let m_y = Kernel3X3::sobel_y().m;
+
+    let mut buffer = vec![0f64; output.len()];
+
+    // (i, j) give start of data block we're applying matrix rows to.
+    for i in 0..image.len() / width - 2 {
+        let data_start = i * width;
+        let data = &image[data_start..];
+        for j in 0..width - 2 {
+            // Apply each row of kernel to this data chunk and save in appropriate image row.
+            output[data_start + j + 1] += m_x[0][0] * data[j] as f64
+                + m_x[0][1] * data[j + 1] as f64
+                + m_x[0][2] * data[j + 2] as f64;
+            buffer[data_start + j + 1] += m_y[0][0] * data[j] as f64
+                + m_y[0][1] * data[j + 1] as f64
+                + m_y[0][2] * data[j + 2] as f64;
+        }
+    }
+    for i in 1..image.len() / width - 1 {
+        let data_start = i * width;
+        let data = &image[data_start..];
+        for j in 0..width - 2 {
+            // Apply each row of kernel to this data chunk and save in appropriate image row.
+            output[data_start - width + j + 1] += m_x[1][0] * data[j] as f64
+                + m_x[1][1] * data[j + 1] as f64
+                + m_x[1][2] * data[j + 2] as f64;
+            buffer[data_start - width + j + 1] += m_y[1][0] * data[j] as f64
+                + m_y[1][1] * data[j + 1] as f64
+                + m_y[1][2] * data[j + 2] as f64;
+        }
+    }
+    for i in 2..image.len() / width {
+        let data_start = i * width;
+        let data = &image[data_start..];
+        for j in 0..width - 2 {
+            // Apply each row of kernel to this data chunk and save in appropriate image row.
+            output[data_start - 2 * width + j + 1] += m_x[2][0] * data[j] as f64
+                + m_x[2][1] * data[j + 1] as f64
+                + m_x[2][2] * data[j + 2] as f64;
+            buffer[data_start - 2 * width + j + 1] += m_y[2][0] * data[j] as f64
+                + m_y[2][1] * data[j + 1] as f64
+                + m_y[2][2] * data[j + 2] as f64;
+        }
+    }
+
+    // Compute magnitude from image gradient components.
     for (m_x, m_y) in output.iter_mut().zip(buffer.iter()) {
         *m_x = (m_x.powi(2) + m_y.powi(2)).sqrt();
     }
@@ -201,7 +267,7 @@ pub fn optimized_sobel(image_proc: &ImageProcessor) {
                 .collect(),
         )
         .unwrap()
-        .save_with_format("scratch/sobel.jpg", image::ImageFormat::Jpeg)
+        .save_with_format(&image_proc.output_path, image::ImageFormat::Jpeg)
         .unwrap();
     }
 }
@@ -545,12 +611,13 @@ fn report_elapsed(time: time::Instant) {
     println!("... {:>2.3}s", elapsed);
 }
 
-pub fn sobel(image: &ImageProcessor, threshold: u8) {
-    let thread_pool = &image.thread_pool;
-    let width = image.dimensions.0;
-    let height = image.dimensions.1;
+/// Sobel image operator, thresholding coefficients with values below `threshold` to 0.
+pub fn sobel(image_proc: &ImageProcessor, threshold: u8) {
+    let thread_pool = &image_proc.thread_pool;
+    let width = image_proc.dimensions.0;
+    let height = image_proc.dimensions.1;
 
-    let buf = &image.image;
+    let buf = &image_proc.image;
 
     let kernel_x = Kernel3X3::sobel_x();
     let kernel_y = Kernel3X3::sobel_y();
@@ -684,13 +751,11 @@ pub fn sobel(image: &ImageProcessor, threshold: u8) {
     let out_image =
         ImageBuffer::<Rgba<u8>, Vec<u8>>::from_raw(width, height, matrix.to_vec()).unwrap();
 
-    const OUT_IMAGE_PATH: &str = "test_data/sobel.jpeg";
-
     let time = time::Instant::now();
     println!("Writing image to disk.");
 
     out_image
-        .save_with_format(OUT_IMAGE_PATH, image::ImageFormat::Jpeg)
+        .save_with_format(&image_proc.output_path, image::ImageFormat::Jpeg)
         .unwrap();
 
     report_elapsed(time);

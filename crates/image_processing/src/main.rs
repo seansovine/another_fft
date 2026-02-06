@@ -10,6 +10,8 @@ pub struct CliArgs {
     pub command: Command,
     #[clap(long, required = true)]
     path: String,
+    #[clap(long, required = true)]
+    output_path: String,
 }
 
 #[derive(Subcommand)]
@@ -18,8 +20,8 @@ pub enum Command {
     Grayscale,
     Fft(FftArgs),
     Convolve,
-    Sobel1,
     Sobel,
+    Sobel2,
     OptTest,
 }
 
@@ -40,12 +42,16 @@ pub struct FftArgs {
 fn main() -> Result<(), String> {
     env_logger::init();
     let args = CliArgs::parse();
-    let path = &args.path;
-    let image_processor = image_processing::ImageProcessor::from_path(path)?;
+    let image_processor =
+        image_processing::ImageProcessor::from_path(&args.path, &args.output_path)?;
 
     match args.command {
         Command::Resize(args) => {
-            image_processing::basic_ops::resize(&image_processor, args.new_width, args.new_height)?;
+            image_processing::basic_ops::save_resize(
+                &image_processor,
+                args.new_width,
+                args.new_height,
+            )?;
         }
         Command::Grayscale => {
             image_processing::basic_ops::save_grayscale(image_processor)?;
@@ -58,12 +64,12 @@ fn main() -> Result<(), String> {
             let kernel = image_processing::convolution::Kernel3X3::avg();
             image_processing::convolution::convolve_3x3(&image_processor, kernel);
         }
-        Command::Sobel1 => {
+        Command::Sobel => {
             // hard code for now; add arg later
-            let threshold: u8 = 75;
+            let threshold: u8 = 0;
             image_processing::convolution::sobel(&image_processor, threshold);
         }
-        Command::Sobel => {
+        Command::Sobel2 => {
             image_processing::convolution::optimized_sobel(&image_processor);
         }
         Command::OptTest => {

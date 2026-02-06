@@ -14,10 +14,13 @@ pub struct ImageProcessor {
 
     // Rayon thread pool for parallel image operations
     pub thread_pool: ThreadPool,
+
+    // Path to save result image to.
+    pub output_path: String,
 }
 
 impl ImageProcessor {
-    pub fn from_path(filepath: &str) -> Result<Self, String> {
+    pub fn from_path(filepath: &str, output_path: &str) -> Result<Self, String> {
         let Ok(image_bytes) = std::fs::read(filepath) else {
             return Err(format!("Unable to read image at path: {}", filepath));
         };
@@ -35,6 +38,7 @@ impl ImageProcessor {
             image,
             dimensions,
             thread_pool,
+            output_path: output_path.into(),
         })
     }
 }
