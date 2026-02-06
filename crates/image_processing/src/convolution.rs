@@ -3,11 +3,13 @@
 // This version is not optimized.
 
 use crate::{ImageProcessor, basic_ops::grayscale_bytes};
+
 use image::{ImageBuffer, Luma, Rgba};
 use rayon::{
     iter::{IndexedParallelIterator, ParallelIterator},
     slice::ParallelSliceMut,
 };
+
 use std::time;
 use std::{
     ops::{Index, IndexMut},
@@ -18,25 +20,16 @@ pub struct Kernel3X3 {
     m: [[f64; 3]; 3],
 }
 
-#[rustfmt::skip]
 impl Kernel3X3 {
     pub fn sobel_x() -> Self {
         Self {
-            m: [
-                [-1.0, 0.0, 1.0],
-                [-2.0, 0.0, 2.0],
-                [-1.0, 0.0, 1.0]
-            ],
+            m: [[-1.0, 0.0, 1.0], [-2.0, 0.0, 2.0], [-1.0, 0.0, 1.0]],
         }
     }
 
     pub fn sobel_y() -> Self {
         Self {
-            m: [
-                [-1.0, -2.0, -1.0],
-                [ 0.0,  0.0,  0.0],
-                [ 1.0,  2.0,  1.0]
-            ],
+            m: [[-1.0, -2.0, -1.0], [0.0, 0.0, 0.0], [1.0, 2.0, 1.0]],
         }
     }
 
@@ -122,13 +115,11 @@ pub fn convolve_3x3(image: &ImageProcessor, kernel: Kernel3X3) {
         .unwrap();
 }
 
-#[allow(unused)]
+/// Image data stored row major, in blocks of channels bytes.
 pub struct ImageMatrix {
-    // data stored row major, in blocks of channels bytes
     m: Vec<u8>,
-
-    // image dimensions and number of channels
     width: usize,
+    #[allow(unused)]
     height: usize,
     channels: usize,
 }
@@ -419,8 +410,8 @@ fn optimized_sobel_x(width: usize, image: &[u8], output: &mut [f64]) {
     }
 }
 
-pub fn sobel_x_optimized(image: &ImageProcessor) {
-    let image = &image.image;
+pub fn sobel_x_optimized(image_proc: &ImageProcessor) {
+    let image = &image_proc.image;
     let image_height = image.height() as usize;
     let image_width = image.width() as usize;
     log::info!("Image dimensions: ({image_height}, {image_width})");
@@ -470,6 +461,51 @@ pub fn sobel_x_optimized(image: &ImageProcessor) {
         )
         .unwrap()
         .save_with_format("scratch/optimized_sobel_test.jpg", image::ImageFormat::Jpeg)
+        .unwrap();
+    }
+
+    let thread_pool = &image_proc.thread_pool;
+    let num_threads = thread_pool.current_num_threads().min(16);
+    assert!((output_bytes.len() / padded_width - 2).is_multiple_of(num_threads));
+    let mut output_bytes = vec![0f64; working_bytes.len()];
+    log::info!("Performing parallel convolution with {num_threads} threads...");
+
+    let start = Instant::now();
+    let image_rows = &mut output_bytes[padded_width..working_bytes.len() - padded_width];
+    let pixels_per_thread = image_rows.len() / num_threads;
+    thread_pool.install(|| {
+        image_rows
+            .par_chunks_mut(pixels_per_thread)
+            .enumerate()
+            .for_each(|(i, chunk)| {
+                optimized_sobel_x(
+                    padded_width,
+                    &working_bytes
+                        [i * pixels_per_thread..(i + 1) * pixels_per_thread + 2 * padded_width],
+                    chunk,
+                );
+            });
+    });
+    log::info!(
+        "Time to apply parallel optimized sobel x convolution: {:?}.",
+        start.elapsed()
+    );
+
+    if true {
+        // Save to file for debugging.
+        ImageBuffer::<Luma<u8>, Vec<u8>>::from_vec(
+            padded_width as u32,
+            padded_height as u32,
+            output_bytes
+                .iter()
+                .map(|v| v.abs().clamp(0.0, 255.0) as u8)
+                .collect(),
+        )
+        .unwrap()
+        .save_with_format(
+            "scratch/parallel_optimized_sobel_test.jpg",
+            image::ImageFormat::Jpeg,
+        )
         .unwrap();
     }
 
