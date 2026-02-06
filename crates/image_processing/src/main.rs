@@ -18,6 +18,7 @@ pub enum Command {
     Grayscale,
     Fft(FftArgs),
     Convolve,
+    Sobel1,
     Sobel,
     OptTest,
 }
@@ -57,10 +58,13 @@ fn main() -> Result<(), String> {
             let kernel = image_processing::convolution::Kernel3X3::avg();
             image_processing::convolution::convolve_3x3(&image_processor, kernel);
         }
-        Command::Sobel => {
+        Command::Sobel1 => {
             // hard code for now; add arg later
             let threshold: u8 = 75;
             image_processing::convolution::sobel(&image_processor, threshold);
+        }
+        Command::Sobel => {
+            image_processing::convolution::optimized_sobel(&image_processor);
         }
         Command::OptTest => {
             image_processing::convolution::sobel_x_optimized(&image_processor);
