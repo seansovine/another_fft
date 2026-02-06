@@ -40,6 +40,392 @@ impl Kernel3X3 {
     }
 }
 
+/// Work-in-progress cache-optimized implementation of the Sobel operator.
+///
+/// Assumptions: That image and output are stored row-major, with rows of `width` entries,
+/// and that image contains two more rows than output.
+fn optimized_sobel_op(width: usize, image: &[u8], output: &mut [f64]) {
+    assert!(width.is_multiple_of(CACHE_LINE_SIZE));
+    assert!(image.len() / width == output.len() / width + 2);
+    let m_x = Kernel3X3::sobel_x().m;
+    let m_y = Kernel3X3::sobel_y().m;
+
+    let mut buffer = vec![0f64; output.len()];
+
+    // Top rows of input only contributes to two output rows.
+    for j in 0..width {
+        output[j + 1] += m_x[0][0] * image[j] as f64
+            + m_x[0][1] * image[j + 1] as f64
+            + m_x[0][2] * image[j + 2] as f64;
+        buffer[j + 1] += m_y[0][0] * image[j] as f64
+            + m_y[0][1] * image[j + 1] as f64
+            + m_y[0][2] * image[j + 2] as f64;
+    }
+    for j in width..2 * width {
+        output[j + 1] += m_x[0][0] * image[j] as f64
+            + m_x[0][1] * image[j + 1] as f64
+            + m_x[0][2] * image[j + 2] as f64;
+        buffer[j + 1] += m_y[0][0] * image[j] as f64
+            + m_y[0][1] * image[j + 1] as f64
+            + m_y[0][2] * image[j + 2] as f64;
+
+        output[j - width + 1] += m_x[1][0] * image[j] as f64
+            + m_x[1][1] * image[j + 1] as f64
+            + m_x[1][2] * image[j + 2] as f64;
+        buffer[j - width + 1] += m_y[1][0] * image[j] as f64
+            + m_y[1][1] * image[j + 1] as f64
+            + m_y[1][2] * image[j + 2] as f64;
+    }
+    // (i, j) give start of data block we're applying matrix rows to.
+    for i in 2..image.len() / width - 2 {
+        for j in 0..width - 2 {
+            let data_start = i * width;
+            let data = &image[data_start..];
+            // Apply each row of kernel to this data chunk and save in appropriate image row.
+            output[data_start + j + 1] += m_x[0][0] * data[j] as f64
+                + m_x[0][1] * data[j + 1] as f64
+                + m_x[0][2] * data[j + 2] as f64;
+            buffer[data_start + j + 1] += m_y[0][0] * data[j] as f64
+                + m_y[0][1] * data[j + 1] as f64
+                + m_y[0][2] * data[j + 2] as f64;
+
+            output[data_start - width + j + 1] += m_x[1][0] * data[j] as f64
+                + m_x[1][1] * data[j + 1] as f64
+                + m_x[1][2] * data[j + 2] as f64;
+            buffer[data_start - width + j + 1] += m_y[1][0] * data[j] as f64
+                + m_y[1][1] * data[j + 1] as f64
+                + m_y[1][2] * data[j + 2] as f64;
+
+            output[data_start - 2 * width + j + 1] += m_x[2][0] * data[j] as f64
+                + m_x[2][1] * data[j + 1] as f64
+                + m_x[2][2] * data[j + 2] as f64;
+            buffer[data_start - 2 * width + j + 1] += m_y[2][0] * data[j] as f64
+                + m_y[2][1] * data[j + 1] as f64
+                + m_y[2][2] * data[j + 2] as f64;
+        }
+    }
+    // Bottom rows of input only apply to some rows of output.
+    for j in image.len() - 2 * width..image.len() - width - 2 {
+        output[j - width + 1] += m_x[1][0] * image[j] as f64
+            + m_x[1][1] * image[j + 1] as f64
+            + m_x[1][2] * image[j + 2] as f64;
+        buffer[j - width + 1] += m_y[1][0] * image[j] as f64
+            + m_y[1][1] * image[j + 1] as f64
+            + m_y[1][2] * image[j + 2] as f64;
+
+        output[j - 2 * width + 1] += m_x[2][0] * image[j] as f64
+            + m_x[2][1] * image[j + 1] as f64
+            + m_x[2][2] * image[j + 2] as f64;
+        buffer[j - 2 * width + 1] += m_y[2][0] * image[j] as f64
+            + m_y[2][1] * image[j + 1] as f64
+            + m_y[2][2] * image[j + 2] as f64;
+    }
+    for j in image.len() - width..image.len() - 2 {
+        output[j - 2 * width + 1] += m_x[2][0] * image[j] as f64
+            + m_x[2][1] * image[j + 1] as f64
+            + m_x[2][2] * image[j + 2] as f64;
+        buffer[j - 2 * width + 1] += m_y[2][0] * image[j] as f64
+            + m_y[2][1] * image[j + 1] as f64
+            + m_y[2][2] * image[j + 2] as f64;
+    }
+
+    for (m_x, m_y) in output.iter_mut().zip(buffer.iter()) {
+        *m_x = (m_x.powi(2) + m_y.powi(2)).sqrt();
+    }
+}
+
+pub fn optimized_sobel(image_proc: &ImageProcessor) {
+    let image = &image_proc.image;
+    let image_height = image.height() as usize;
+    let image_width = image.width() as usize;
+    log::info!("Image dimensions: ({image_height}, {image_width})");
+
+    let start = Instant::now();
+    let input_bytes = grayscale_bytes(image);
+    log::info!("Time to convert image to grayscale: {:?}.", start.elapsed());
+
+    let start = Instant::now();
+    let padded_width = (image_width + 2).next_multiple_of(CACHE_LINE_SIZE);
+    let padded_height = image_height + 2;
+    let mut working_bytes = vec![0u8; padded_height * padded_width];
+    for i in 1..image_height {
+        for j in 1..image_width {
+            working_bytes[i * padded_width + j] = input_bytes[(i - 1) * image_width + (j - 1)];
+        }
+    }
+    let mut output_bytes = vec![0f64; working_bytes.len()];
+    log::info!(
+        "Time to copy image to padded buffer: {:?}.",
+        start.elapsed()
+    );
+
+    let thread_pool = &image_proc.thread_pool;
+    let num_threads = thread_pool.current_num_threads().min(16);
+    assert!((output_bytes.len() / padded_width - 2).is_multiple_of(num_threads));
+    let image_rows = &mut output_bytes[padded_width..working_bytes.len() - padded_width];
+
+    if true {
+        log::info!("Performing parallel convolution with {num_threads} threads...");
+        let start = Instant::now();
+        let pixels_per_thread = image_rows.len() / num_threads;
+        thread_pool.install(|| {
+            image_rows
+                .par_chunks_mut(pixels_per_thread)
+                .enumerate()
+                .for_each(|(i, chunk)| {
+                    optimized_sobel_op(
+                        padded_width,
+                        &working_bytes
+                            [i * pixels_per_thread..(i + 1) * pixels_per_thread + 2 * padded_width],
+                        chunk,
+                    );
+                });
+        });
+        let elapsed = start.elapsed();
+        log::info!("Time to apply parallel sobel operator: {:?}.", elapsed);
+    } else {
+        let start = Instant::now();
+        optimized_sobel_op(padded_width, &working_bytes, image_rows);
+        let elapsed = start.elapsed();
+        log::info!("Time to apply sobel operator: {:?}.", elapsed);
+    }
+
+    if true {
+        // Save to file for debugging.
+        ImageBuffer::<Luma<u8>, Vec<u8>>::from_vec(
+            padded_width as u32,
+            padded_height as u32,
+            output_bytes
+                .iter()
+                .map(|v| v.abs().clamp(0.0, 255.0) as u8)
+                .collect(),
+        )
+        .unwrap()
+        .save_with_format("scratch/sobel.jpg", image::ImageFormat::Jpeg)
+        .unwrap();
+    }
+}
+
+/// Simple direct implementation of the x-direction convolution for the Sobel operator.
+fn naive_sobel_x(height: usize, width: usize, image: &[u8], output: &mut [u8]) {
+    assert!(image.len() == output.len() && image.len() == height * width);
+    let m_x = Kernel3X3::sobel_x().m;
+    for i in 0..height {
+        for j in 0..width {
+            let out_ind = i * width + j;
+            let mut val = 0.0f64;
+            #[allow(clippy::needless_range_loop)]
+            for p in 0..3 {
+                for q in 0..3 {
+                    if (j == 0 && q == 0)
+                        || (j == width - 1 && q == 2)
+                        || (i == 0 && p == 0)
+                        || (i == height - 1 && p == 2)
+                    {
+                        continue;
+                    }
+                    let image_ind =
+                        ((i + p) as isize - 1) as usize * width + ((j + q) as isize - 1) as usize;
+                    val += m_x[p][q] * image[image_ind] as f64;
+                }
+            }
+            output[out_ind] = val.abs().clamp(0.0, 255.0) as u8;
+        }
+    }
+}
+
+const CACHE_LINE_SIZE: usize = 64;
+
+/// Work-in-progress cache optimized implementation of the x-direction Sobel convolution.
+///
+/// Assumptions: That image and output are stored row-major, with rows of `width` entries,
+/// and that image contains two more rows than output.
+fn optimized_sobel_x_test(width: usize, image: &[u8], output: &mut [f64]) {
+    assert!(width.is_multiple_of(CACHE_LINE_SIZE));
+    assert!(image.len() / width == output.len() / width + 2);
+    let m_x = Kernel3X3::sobel_x().m;
+
+    // Top rows of input only contributes to two output rows.
+    for j in 0..width {
+        output[j + 1] += m_x[0][0] * image[j] as f64
+            + m_x[0][1] * image[j + 1] as f64
+            + m_x[0][2] * image[j + 2] as f64;
+    }
+    for j in width..2 * width {
+        output[j + 1] += m_x[0][0] * image[j] as f64
+            + m_x[0][1] * image[j + 1] as f64
+            + m_x[0][2] * image[j + 2] as f64;
+        output[j - width + 1] += m_x[1][0] * image[j] as f64
+            + m_x[1][1] * image[j + 1] as f64
+            + m_x[1][2] * image[j + 2] as f64;
+    }
+    // (i, j) give start of data block we're applying matrix rows to.
+    for i in 2..image.len() / width - 2 {
+        for j in 0..(width / CACHE_LINE_SIZE) - 1 {
+            let data_start = i * width + j * 64;
+            let data = &image[data_start..];
+            // Apply each row of kernel to this data chunk and save in appropriate image row.
+            for k in 0..64 {
+                output[data_start + k + 1] += m_x[0][0] * data[k] as f64
+                    + m_x[0][1] * data[k + 1] as f64
+                    + m_x[0][2] * data[k + 2] as f64;
+                output[data_start - width + k + 1] += m_x[1][0] * data[k] as f64
+                    + m_x[1][1] * data[k + 1] as f64
+                    + m_x[1][2] * data[k + 2] as f64;
+                output[data_start - 2 * width + k + 1] += m_x[2][0] * data[k] as f64
+                    + m_x[2][1] * data[k + 1] as f64
+                    + m_x[2][2] * data[k + 2] as f64;
+            }
+        }
+        let data_start = i * width + width - 64;
+        for k in data_start..(i + 1) * width - 2 {
+            output[k + 1] += m_x[0][0] * image[k] as f64
+                + m_x[0][1] * image[k + 1] as f64
+                + m_x[0][2] * image[k + 2] as f64;
+            output[k - width + 1] += m_x[1][0] * image[k] as f64
+                + m_x[1][1] * image[k + 1] as f64
+                + m_x[1][2] * image[k + 2] as f64;
+            output[k - 2 * width + 1] += m_x[2][0] * image[k] as f64
+                + m_x[2][1] * image[k + 1] as f64
+                + m_x[2][2] * image[k + 2] as f64;
+        }
+    }
+    // Bottom rows of input only apply to some rows of output.
+    for j in image.len() - 2 * width..image.len() - width - 2 {
+        output[j - width + 1] += m_x[1][0] * image[j] as f64
+            + m_x[1][1] * image[j + 1] as f64
+            + m_x[1][2] * image[j + 2] as f64;
+        output[j - 2 * width + 1] += m_x[2][0] * image[j] as f64
+            + m_x[2][1] * image[j + 1] as f64
+            + m_x[2][2] * image[j + 2] as f64;
+    }
+    for j in image.len() - width..image.len() - 2 {
+        output[j - 2 * width + 1] += m_x[2][0] * image[j] as f64
+            + m_x[2][1] * image[j + 1] as f64
+            + m_x[2][2] * image[j + 2] as f64;
+    }
+}
+
+pub fn sobel_x_optimized(image_proc: &ImageProcessor) {
+    let image = &image_proc.image;
+    let image_height = image.height() as usize;
+    let image_width = image.width() as usize;
+    log::info!("Image dimensions: ({image_height}, {image_width})");
+
+    let start = Instant::now();
+    let input_bytes = grayscale_bytes(image);
+    log::info!("Time to convert image to grayscale: {:?}.", start.elapsed());
+
+    let start = Instant::now();
+    let padded_width = (image_width + 2).next_multiple_of(CACHE_LINE_SIZE);
+    let padded_height = image_height + 2;
+    let mut working_bytes = vec![0u8; padded_height * padded_width];
+    for i in 1..image_height {
+        for j in 1..image_width {
+            working_bytes[i * padded_width + j] = input_bytes[(i - 1) * image_width + (j - 1)];
+        }
+    }
+    let mut output_bytes = vec![0f64; working_bytes.len()];
+    log::info!(
+        "Time to copy image to padded buffer: {:?}.",
+        start.elapsed()
+    );
+
+    let start = Instant::now();
+    optimized_sobel_x_test(
+        padded_width,
+        &working_bytes,
+        // In parallel verson we'll take slice of output as last arg and
+        // slice of input with one row before and one row after same rows
+        // of output for second arg.
+        &mut output_bytes[padded_width..working_bytes.len() - padded_width],
+    );
+    log::info!(
+        "Time to apply optimized sobel x convolution: {:?}.",
+        start.elapsed()
+    );
+
+    if true {
+        // Save to file for debugging.
+        ImageBuffer::<Luma<u8>, Vec<u8>>::from_vec(
+            padded_width as u32,
+            padded_height as u32,
+            output_bytes
+                .iter()
+                .map(|v| v.abs().clamp(0.0, 255.0) as u8)
+                .collect(),
+        )
+        .unwrap()
+        .save_with_format("scratch/optimized_sobel_test.jpg", image::ImageFormat::Jpeg)
+        .unwrap();
+    }
+
+    let thread_pool = &image_proc.thread_pool;
+    let num_threads = thread_pool.current_num_threads().min(16);
+    assert!((output_bytes.len() / padded_width - 2).is_multiple_of(num_threads));
+    let mut output_bytes = vec![0f64; working_bytes.len()];
+    log::info!("Performing parallel convolution with {num_threads} threads...");
+
+    let start = Instant::now();
+    let image_rows = &mut output_bytes[padded_width..working_bytes.len() - padded_width];
+    let pixels_per_thread = image_rows.len() / num_threads;
+    thread_pool.install(|| {
+        image_rows
+            .par_chunks_mut(pixels_per_thread)
+            .enumerate()
+            .for_each(|(i, chunk)| {
+                optimized_sobel_x_test(
+                    padded_width,
+                    &working_bytes
+                        [i * pixels_per_thread..(i + 1) * pixels_per_thread + 2 * padded_width],
+                    chunk,
+                );
+            });
+    });
+    log::info!(
+        "Time to apply parallel optimized sobel x convolution: {:?}.",
+        start.elapsed()
+    );
+
+    if true {
+        // Save to file for debugging.
+        ImageBuffer::<Luma<u8>, Vec<u8>>::from_vec(
+            padded_width as u32,
+            padded_height as u32,
+            output_bytes
+                .iter()
+                .map(|v| v.abs().clamp(0.0, 255.0) as u8)
+                .collect(),
+        )
+        .unwrap()
+        .save_with_format(
+            "scratch/parallel_optimized_sobel_test.jpg",
+            image::ImageFormat::Jpeg,
+        )
+        .unwrap();
+    }
+
+    let mut working_bytes = vec![0u8; image_height * image_width];
+    let start = Instant::now();
+    naive_sobel_x(image_height, image_width, &input_bytes, &mut working_bytes);
+    log::info!(
+        "Time to apply naive sobel x convolution: {:?}.",
+        start.elapsed()
+    );
+
+    if true {
+        // Save to file for debugging.
+        ImageBuffer::<Luma<u8>, Vec<u8>>::from_vec(
+            image_width as u32,
+            image_height as u32,
+            working_bytes,
+        )
+        .unwrap()
+        .save_with_format("scratch/naive_sobel_test.jpg", image::ImageFormat::Jpeg)
+        .unwrap();
+    }
+}
+
 pub fn convolve_3x3(image: &ImageProcessor, kernel: Kernel3X3) {
     let width = image.dimensions.0;
     let height = image.dimensions.1;
@@ -308,390 +694,4 @@ pub fn sobel(image: &ImageProcessor, threshold: u8) {
         .unwrap();
 
     report_elapsed(time);
-}
-
-/// Simple direct implementation of the x-direction convolution for the Sobel operator.
-fn naive_sobel_x(height: usize, width: usize, image: &[u8], output: &mut [u8]) {
-    assert!(image.len() == output.len() && image.len() == height * width);
-    let m_x = Kernel3X3::sobel_x().m;
-    for i in 0..height {
-        for j in 0..width {
-            let out_ind = i * width + j;
-            let mut val = 0.0f64;
-            #[allow(clippy::needless_range_loop)]
-            for p in 0..3 {
-                for q in 0..3 {
-                    if (j == 0 && q == 0)
-                        || (j == width - 1 && q == 2)
-                        || (i == 0 && p == 0)
-                        || (i == height - 1 && p == 2)
-                    {
-                        continue;
-                    }
-                    let image_ind =
-                        ((i + p) as isize - 1) as usize * width + ((j + q) as isize - 1) as usize;
-                    val += m_x[p][q] * image[image_ind] as f64;
-                }
-            }
-            output[out_ind] = val.abs().clamp(0.0, 255.0) as u8;
-        }
-    }
-}
-
-const CACHE_LINE_SIZE: usize = 64;
-
-/// Work-in-progress cache optimized implementation of the x-direction Sobel convolution.
-///
-/// Assumptions: That image and output are stored row-major, with rows of `width` entries,
-/// and that image contains two more rows than output.
-fn optimized_sobel_x_test(width: usize, image: &[u8], output: &mut [f64]) {
-    assert!(width.is_multiple_of(CACHE_LINE_SIZE));
-    assert!(image.len() / width == output.len() / width + 2);
-    let m_x = Kernel3X3::sobel_x().m;
-
-    // Top rows of input only contributes to two output rows.
-    for j in 0..width {
-        output[j + 1] += m_x[0][0] * image[j] as f64
-            + m_x[0][1] * image[j + 1] as f64
-            + m_x[0][2] * image[j + 2] as f64;
-    }
-    for j in width..2 * width {
-        output[j + 1] += m_x[0][0] * image[j] as f64
-            + m_x[0][1] * image[j + 1] as f64
-            + m_x[0][2] * image[j + 2] as f64;
-        output[j - width + 1] += m_x[1][0] * image[j] as f64
-            + m_x[1][1] * image[j + 1] as f64
-            + m_x[1][2] * image[j + 2] as f64;
-    }
-    // (i, j) give start of data block we're applying matrix rows to.
-    for i in 2..image.len() / width - 2 {
-        for j in 0..(width / CACHE_LINE_SIZE) - 1 {
-            let data_start = i * width + j * 64;
-            let data = &image[data_start..];
-            // Apply each row of kernel to this data chunk and save in appropriate image row.
-            for k in 0..64 {
-                output[data_start + k + 1] += m_x[0][0] * data[k] as f64
-                    + m_x[0][1] * data[k + 1] as f64
-                    + m_x[0][2] * data[k + 2] as f64;
-                output[data_start - width + k + 1] += m_x[1][0] * data[k] as f64
-                    + m_x[1][1] * data[k + 1] as f64
-                    + m_x[1][2] * data[k + 2] as f64;
-                output[data_start - 2 * width + k + 1] += m_x[2][0] * data[k] as f64
-                    + m_x[2][1] * data[k + 1] as f64
-                    + m_x[2][2] * data[k + 2] as f64;
-            }
-        }
-        let data_start = i * width + width - 64;
-        for k in data_start..(i + 1) * width - 2 {
-            output[k + 1] += m_x[0][0] * image[k] as f64
-                + m_x[0][1] * image[k + 1] as f64
-                + m_x[0][2] * image[k + 2] as f64;
-            output[k - width + 1] += m_x[1][0] * image[k] as f64
-                + m_x[1][1] * image[k + 1] as f64
-                + m_x[1][2] * image[k + 2] as f64;
-            output[k - 2 * width + 1] += m_x[2][0] * image[k] as f64
-                + m_x[2][1] * image[k + 1] as f64
-                + m_x[2][2] * image[k + 2] as f64;
-        }
-    }
-    // Bottom rows of input only apply to some rows of output.
-    for j in image.len() - 2 * width..image.len() - width - 2 {
-        output[j - width + 1] += m_x[1][0] * image[j] as f64
-            + m_x[1][1] * image[j + 1] as f64
-            + m_x[1][2] * image[j + 2] as f64;
-        output[j - 2 * width + 1] += m_x[2][0] * image[j] as f64
-            + m_x[2][1] * image[j + 1] as f64
-            + m_x[2][2] * image[j + 2] as f64;
-    }
-    for j in image.len() - width..image.len() - 2 {
-        output[j - 2 * width + 1] += m_x[2][0] * image[j] as f64
-            + m_x[2][1] * image[j + 1] as f64
-            + m_x[2][2] * image[j + 2] as f64;
-    }
-}
-
-pub fn sobel_x_optimized(image_proc: &ImageProcessor) {
-    let image = &image_proc.image;
-    let image_height = image.height() as usize;
-    let image_width = image.width() as usize;
-    log::info!("Image dimensions: ({image_height}, {image_width})");
-
-    let start = Instant::now();
-    let input_bytes = grayscale_bytes(image);
-    log::info!("Time to convert image to grayscale: {:?}.", start.elapsed());
-
-    let start = Instant::now();
-    let padded_width = (image_width + 2).next_multiple_of(CACHE_LINE_SIZE);
-    let padded_height = image_height + 2;
-    let mut working_bytes = vec![0u8; padded_height * padded_width];
-    for i in 1..image_height {
-        for j in 1..image_width {
-            working_bytes[i * padded_width + j] = input_bytes[(i - 1) * image_width + (j - 1)];
-        }
-    }
-    let mut output_bytes = vec![0f64; working_bytes.len()];
-    log::info!(
-        "Time to copy image to padded buffer: {:?}.",
-        start.elapsed()
-    );
-
-    let start = Instant::now();
-    optimized_sobel_x_test(
-        padded_width,
-        &working_bytes,
-        // In parallel verson we'll take slice of output as last arg and
-        // slice of input with one row before and one row after same rows
-        // of output for second arg.
-        &mut output_bytes[padded_width..working_bytes.len() - padded_width],
-    );
-    log::info!(
-        "Time to apply optimized sobel x convolution: {:?}.",
-        start.elapsed()
-    );
-
-    if true {
-        // Save to file for debugging.
-        ImageBuffer::<Luma<u8>, Vec<u8>>::from_vec(
-            padded_width as u32,
-            padded_height as u32,
-            output_bytes
-                .iter()
-                .map(|v| v.abs().clamp(0.0, 255.0) as u8)
-                .collect(),
-        )
-        .unwrap()
-        .save_with_format("scratch/optimized_sobel_test.jpg", image::ImageFormat::Jpeg)
-        .unwrap();
-    }
-
-    let thread_pool = &image_proc.thread_pool;
-    let num_threads = thread_pool.current_num_threads().min(16);
-    assert!((output_bytes.len() / padded_width - 2).is_multiple_of(num_threads));
-    let mut output_bytes = vec![0f64; working_bytes.len()];
-    log::info!("Performing parallel convolution with {num_threads} threads...");
-
-    let start = Instant::now();
-    let image_rows = &mut output_bytes[padded_width..working_bytes.len() - padded_width];
-    let pixels_per_thread = image_rows.len() / num_threads;
-    thread_pool.install(|| {
-        image_rows
-            .par_chunks_mut(pixels_per_thread)
-            .enumerate()
-            .for_each(|(i, chunk)| {
-                optimized_sobel_x_test(
-                    padded_width,
-                    &working_bytes
-                        [i * pixels_per_thread..(i + 1) * pixels_per_thread + 2 * padded_width],
-                    chunk,
-                );
-            });
-    });
-    log::info!(
-        "Time to apply parallel optimized sobel x convolution: {:?}.",
-        start.elapsed()
-    );
-
-    if true {
-        // Save to file for debugging.
-        ImageBuffer::<Luma<u8>, Vec<u8>>::from_vec(
-            padded_width as u32,
-            padded_height as u32,
-            output_bytes
-                .iter()
-                .map(|v| v.abs().clamp(0.0, 255.0) as u8)
-                .collect(),
-        )
-        .unwrap()
-        .save_with_format(
-            "scratch/parallel_optimized_sobel_test.jpg",
-            image::ImageFormat::Jpeg,
-        )
-        .unwrap();
-    }
-
-    let mut working_bytes = vec![0u8; image_height * image_width];
-    let start = Instant::now();
-    naive_sobel_x(image_height, image_width, &input_bytes, &mut working_bytes);
-    log::info!(
-        "Time to apply naive sobel x convolution: {:?}.",
-        start.elapsed()
-    );
-
-    if true {
-        // Save to file for debugging.
-        ImageBuffer::<Luma<u8>, Vec<u8>>::from_vec(
-            image_width as u32,
-            image_height as u32,
-            working_bytes,
-        )
-        .unwrap()
-        .save_with_format("scratch/naive_sobel_test.jpg", image::ImageFormat::Jpeg)
-        .unwrap();
-    }
-}
-
-/// Work-in-progress cache optimized implementation of the Sobel operator.
-///
-/// Assumptions: That image and output are stored row-major, with rows of `width` entries,
-/// and that image contains two more rows than output.
-fn optimized_sobel_op(width: usize, image: &[u8], output: &mut [f64]) {
-    assert!(width.is_multiple_of(CACHE_LINE_SIZE));
-    assert!(image.len() / width == output.len() / width + 2);
-    let m_x = Kernel3X3::sobel_x().m;
-    let m_y = Kernel3X3::sobel_y().m;
-
-    let mut buffer = vec![0f64; output.len()];
-
-    // Top rows of input only contributes to two output rows.
-    for j in 0..width {
-        output[j + 1] += m_x[0][0] * image[j] as f64
-            + m_x[0][1] * image[j + 1] as f64
-            + m_x[0][2] * image[j + 2] as f64;
-        buffer[j + 1] += m_y[0][0] * image[j] as f64
-            + m_y[0][1] * image[j + 1] as f64
-            + m_y[0][2] * image[j + 2] as f64;
-    }
-    for j in width..2 * width {
-        output[j + 1] += m_x[0][0] * image[j] as f64
-            + m_x[0][1] * image[j + 1] as f64
-            + m_x[0][2] * image[j + 2] as f64;
-        buffer[j + 1] += m_y[0][0] * image[j] as f64
-            + m_y[0][1] * image[j + 1] as f64
-            + m_y[0][2] * image[j + 2] as f64;
-
-        output[j - width + 1] += m_x[1][0] * image[j] as f64
-            + m_x[1][1] * image[j + 1] as f64
-            + m_x[1][2] * image[j + 2] as f64;
-        buffer[j - width + 1] += m_y[1][0] * image[j] as f64
-            + m_y[1][1] * image[j + 1] as f64
-            + m_y[1][2] * image[j + 2] as f64;
-    }
-    // (i, j) give start of data block we're applying matrix rows to.
-    for i in 2..image.len() / width - 2 {
-        for j in 0..width - 2 {
-            let data_start = i * width;
-            let data = &image[data_start..];
-            // Apply each row of kernel to this data chunk and save in appropriate image row.
-            output[data_start + j + 1] += m_x[0][0] * data[j] as f64
-                + m_x[0][1] * data[j + 1] as f64
-                + m_x[0][2] * data[j + 2] as f64;
-            buffer[data_start + j + 1] += m_y[0][0] * data[j] as f64
-                + m_y[0][1] * data[j + 1] as f64
-                + m_y[0][2] * data[j + 2] as f64;
-
-            output[data_start - width + j + 1] += m_x[1][0] * data[j] as f64
-                + m_x[1][1] * data[j + 1] as f64
-                + m_x[1][2] * data[j + 2] as f64;
-            buffer[data_start - width + j + 1] += m_y[1][0] * data[j] as f64
-                + m_y[1][1] * data[j + 1] as f64
-                + m_y[1][2] * data[j + 2] as f64;
-
-            output[data_start - 2 * width + j + 1] += m_x[2][0] * data[j] as f64
-                + m_x[2][1] * data[j + 1] as f64
-                + m_x[2][2] * data[j + 2] as f64;
-            buffer[data_start - 2 * width + j + 1] += m_y[2][0] * data[j] as f64
-                + m_y[2][1] * data[j + 1] as f64
-                + m_y[2][2] * data[j + 2] as f64;
-        }
-    }
-    // Bottom rows of input only apply to some rows of output.
-    for j in image.len() - 2 * width..image.len() - width - 2 {
-        output[j - width + 1] += m_x[1][0] * image[j] as f64
-            + m_x[1][1] * image[j + 1] as f64
-            + m_x[1][2] * image[j + 2] as f64;
-        buffer[j - width + 1] += m_y[1][0] * image[j] as f64
-            + m_y[1][1] * image[j + 1] as f64
-            + m_y[1][2] * image[j + 2] as f64;
-
-        output[j - 2 * width + 1] += m_x[2][0] * image[j] as f64
-            + m_x[2][1] * image[j + 1] as f64
-            + m_x[2][2] * image[j + 2] as f64;
-        buffer[j - 2 * width + 1] += m_y[2][0] * image[j] as f64
-            + m_y[2][1] * image[j + 1] as f64
-            + m_y[2][2] * image[j + 2] as f64;
-    }
-    for j in image.len() - width..image.len() - 2 {
-        output[j - 2 * width + 1] += m_x[2][0] * image[j] as f64
-            + m_x[2][1] * image[j + 1] as f64
-            + m_x[2][2] * image[j + 2] as f64;
-        buffer[j - 2 * width + 1] += m_y[2][0] * image[j] as f64
-            + m_y[2][1] * image[j + 1] as f64
-            + m_y[2][2] * image[j + 2] as f64;
-    }
-
-    for (m_x, m_y) in output.iter_mut().zip(buffer.iter()) {
-        *m_x = (m_x.powi(2) + m_y.powi(2)).sqrt();
-    }
-}
-
-pub fn optimized_sobel(image_proc: &ImageProcessor) {
-    let image = &image_proc.image;
-    let image_height = image.height() as usize;
-    let image_width = image.width() as usize;
-    log::info!("Image dimensions: ({image_height}, {image_width})");
-
-    let start = Instant::now();
-    let input_bytes = grayscale_bytes(image);
-    log::info!("Time to convert image to grayscale: {:?}.", start.elapsed());
-
-    let start = Instant::now();
-    let padded_width = (image_width + 2).next_multiple_of(CACHE_LINE_SIZE);
-    let padded_height = image_height + 2;
-    let mut working_bytes = vec![0u8; padded_height * padded_width];
-    for i in 1..image_height {
-        for j in 1..image_width {
-            working_bytes[i * padded_width + j] = input_bytes[(i - 1) * image_width + (j - 1)];
-        }
-    }
-    let mut output_bytes = vec![0f64; working_bytes.len()];
-    log::info!(
-        "Time to copy image to padded buffer: {:?}.",
-        start.elapsed()
-    );
-
-    let thread_pool = &image_proc.thread_pool;
-    let num_threads = thread_pool.current_num_threads().min(16);
-    assert!((output_bytes.len() / padded_width - 2).is_multiple_of(num_threads));
-    let image_rows = &mut output_bytes[padded_width..working_bytes.len() - padded_width];
-
-    if true {
-        log::info!("Performing parallel convolution with {num_threads} threads...");
-        let start = Instant::now();
-        let pixels_per_thread = image_rows.len() / num_threads;
-        thread_pool.install(|| {
-            image_rows
-                .par_chunks_mut(pixels_per_thread)
-                .enumerate()
-                .for_each(|(i, chunk)| {
-                    optimized_sobel_op(
-                        padded_width,
-                        &working_bytes
-                            [i * pixels_per_thread..(i + 1) * pixels_per_thread + 2 * padded_width],
-                        chunk,
-                    );
-                });
-        });
-        let elapsed = start.elapsed();
-        log::info!("Time to apply parallel sobel operator: {:?}.", elapsed);
-    } else {
-        let start = Instant::now();
-        optimized_sobel_op(padded_width, &working_bytes, image_rows);
-        let elapsed = start.elapsed();
-        log::info!("Time to apply sobel operator: {:?}.", elapsed);
-    }
-
-    if true {
-        // Save to file for debugging.
-        ImageBuffer::<Luma<u8>, Vec<u8>>::from_vec(
-            padded_width as u32,
-            padded_height as u32,
-            output_bytes
-                .iter()
-                .map(|v| v.abs().clamp(0.0, 255.0) as u8)
-                .collect(),
-        )
-        .unwrap()
-        .save_with_format("scratch/sobel.jpg", image::ImageFormat::Jpeg)
-        .unwrap();
-    }
 }
