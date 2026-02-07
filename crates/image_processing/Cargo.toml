@@ -8,6 +8,7 @@ another_fft = { version = "0.1.0", path = "../another_fft" }
 clap = { version = "4.5.39", features = ["derive"] }
 env_logger = "0.11.8"
 log = "0.4.29"
+num-format = "0.4.4"
 num_cpus = "1.17.0"
 rayon = "1.10.0"
 

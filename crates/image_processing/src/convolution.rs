@@ -5,6 +5,7 @@
 use crate::{ImageProcessor, basic_ops::grayscale_bytes};
 
 use image::{ImageBuffer, Luma, Rgba};
+use num_format::{Locale, ToFormattedString};
 use rayon::{
     iter::{IndexedParallelIterator, ParallelIterator},
     slice::ParallelSliceMut,
@@ -204,15 +205,19 @@ pub fn optimized_sobel(image_proc: &ImageProcessor) {
     let image = &image_proc.image;
     let image_height = image.height() as usize;
     let image_width = image.width() as usize;
-    log::info!("Image dimensions: ({image_height}, {image_width})");
+    log::info!("Image dimensions (h x w): ({image_height}, {image_width})");
 
     let start = Instant::now();
     let input_bytes = grayscale_bytes(image);
     log::info!("Time to convert image to grayscale: {:?}.", start.elapsed());
 
+    const DESIRED_THREADS: usize = 16;
+    let thread_pool = &image_proc.thread_pool;
+    let num_threads = thread_pool.current_num_threads().min(DESIRED_THREADS);
+
     let start = Instant::now();
     let padded_width = (image_width + 2).next_multiple_of(CACHE_LINE_SIZE);
-    let padded_height = image_height + 2;
+    let padded_height = image_height.next_multiple_of(num_threads) + 2;
     let mut working_bytes = vec![0u8; padded_height * padded_width];
     for i in 1..image_height {
         for j in 1..image_width {
@@ -224,9 +229,12 @@ pub fn optimized_sobel(image_proc: &ImageProcessor) {
         "Time to copy image to padded buffer: {:?}.",
         start.elapsed()
     );
+    log::info!(
+        "Padded data row width in bytes: input: {} / output: {}",
+        (padded_width * std::mem::size_of_val(&working_bytes[0])).to_formatted_string(&Locale::en),
+        (padded_width * std::mem::size_of_val(&output_bytes[0])).to_formatted_string(&Locale::en)
+    );
 
-    let thread_pool = &image_proc.thread_pool;
-    let num_threads = thread_pool.current_num_threads().min(16);
     assert!((output_bytes.len() / padded_width - 2).is_multiple_of(num_threads));
     let image_rows = &mut output_bytes[padded_width..working_bytes.len() - padded_width];
 
