@@ -1,6 +1,7 @@
 // CLI for image processing crate that uses another_fft
 
 use clap::{Args, Parser, Subcommand};
+use image_processing::convolution::XConvMethod;
 
 // setup command line args
 
@@ -22,7 +23,7 @@ pub enum Command {
     Convolve,
     Sobel,
     Sobel2,
-    OptTest,
+    ConvTest(ConvTestArgs),
 }
 
 #[derive(Debug, Args)]
@@ -37,6 +38,12 @@ pub struct ResizeArgs {
 pub struct FftArgs {
     #[clap(long, action)]
     filter: bool,
+}
+
+#[derive(Args)]
+pub struct ConvTestArgs {
+    #[clap(subcommand)]
+    method: XConvMethod,
 }
 
 fn main() -> Result<(), String> {
@@ -70,10 +77,10 @@ fn main() -> Result<(), String> {
             image_processing::convolution::sobel(&image_processor, threshold);
         }
         Command::Sobel2 => {
-            image_processing::convolution::optimized_sobel(&image_processor);
+            image_processing::convolution::sobel_test(&image_processor);
         }
-        Command::OptTest => {
-            image_processing::convolution::sobel_x_optimized(&image_processor);
+        Command::ConvTest(args) => {
+            image_processing::convolution::sobel_x_test(&image_processor, args.method);
         }
     }
 

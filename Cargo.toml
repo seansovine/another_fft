@@ -1,3 +1,6 @@
 [workspace]
 members = ["crates/another_fft", "crates/image_processing"]
 resolver = "3"
+
+[profile.release]
+debug = true
