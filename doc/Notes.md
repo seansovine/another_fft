@@ -1,4 +1,4 @@
-# Notes on convolution performance
+# Convolution performance experiments
 
 We've added `scripts/perf_test.sh` and `scripts/conv_test_perf.sh`. These scripts will run
 different implementations of an algorithm and then re-run them with `perf stat`.
@@ -114,11 +114,17 @@ could also affect the efficiency of the method, which could be a tradeoff in som
 to combine multiple convolutions in several steps with higher precision.
 
 At this point I can only draw tentative conclusions. But it's clear the "naive" implementation performs
-much better: It executes significantly fewer instructions; has signficantly fewer cache misses; it
+much better: It executes significantly fewer instructions; has significantly fewer cache misses; it
 takes about half as long to run; and it doesn't require converting the image pixel type when writing
 the final output image.
 
 ## Next steps
+
+I started working on this lately as an example problem to motivate digging into some optimization
+strategies and techniques. I have been interested in optimizations for 2D convolution for a while. But
+when I start working on something, if I start having fun I usually get carried away with it. Here are
+some of the things I could try if I keep going down the same path. But I think before doing these I
+might take a look at the implementations in some good open source libraries first.
 
 I plan to keep looking into performance profiling and testing methodology and will keep working on more
 hardware-aware performance optimization strategies. For this particular convolution use case, I'm not
@@ -126,13 +132,13 @@ sure what more can be done to optimize without using vectorized operations expli
 be inserting them already; we can check the assembly) or doing the work on a GPU. But I will certainly
 keep researching and studying the problem.
 
-The particular case we're addressing is convolution with a single abitrarily-sized image using a small
+The particular case we're addressing is convolution with a single arbitrarily-sized image using a small
 (3 x 3) kernel. More involved methods like im2col can be used for batch convolutions, but many such methods
-involve an initial transformation that might outweight and gains for our use case. I'll keep researching
+involve an initial transformation that might outweigh and gains for our use case. I'll keep researching
 available approaches to this problem.
 
 We have a parallelized version of the operation using Rayon. It is also not giving as much of a performance
 improvement as we might expect. Each thread is writing to a disjoint segment of data, but there is some
 overlap in the constant data that is being read. [This](https://gendignoux.com/blog/2024/11/18/rust-rayon-optimized.html)
-post contains some ideas and an open source Rust parallization library with a simlar API to Rayon, that
+post contains some ideas and an open source Rust parallelization library with a similar API to Rayon, that
 may perform better for our use case. I plan to look into that too.

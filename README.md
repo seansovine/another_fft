@@ -70,11 +70,8 @@ as you can see in the example below. We have a Sobel implementation in
 
 The Sobel operator is implemented as a combination of two convolution operations (see [Wikipedia](https://en.wikipedia.org/wiki/Sobel_operator)).
 Optimizing a 2d convolution operation on a CPU is a difficult problem (see [this](https://ieeexplore.ieee.org/document/9765671), for example).
-The version here is not highly optimized, except that we break the image into horizontal
+The version here has some basic optimization: We break the image into horizontal
 bands and convolve each band in parallel, and we perform the border convolution separately to
-reduce branching in the main convolution loop.
-
-We might put some thought into further optimizations
-later. One fairly straightforward such optimization would be to use the fact that the kernels involved
-can be split into a convolution of column and row kernels, so the convolutions can be performed as
-successive simpler convolutions.
+reduce branching in the main convolution loop. But I think it could probably be improved.
+One thing we could do is to use the fact that the kernels involved can be split into a convolution
+of column and row kernels, so the convolutions can be performed as a sequence of two simpler 1d convolutions.

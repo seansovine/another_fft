@@ -1,7 +1,7 @@
 // CLI for image processing crate that uses another_fft
 
 use clap::{Args, Parser, Subcommand};
-use image_processing::convolution::XConvMethod;
+use image_processing::filter::experiment::XConvMethod;
 
 // setup command line args
 
@@ -68,19 +68,19 @@ fn main() -> Result<(), String> {
         }
         Command::Convolve => {
             // hard code for now; add arg later
-            let kernel = image_processing::convolution::Kernel3X3::avg();
-            image_processing::convolution::convolve_3x3(&image_processor, kernel);
+            let kernel = image_processing::filter::Kernel3X3::avg();
+            image_processing::filter::convolve_3x3(&image_processor, kernel);
         }
         Command::Sobel => {
             // hard code for now; add arg later
             let threshold: u8 = 0;
-            image_processing::convolution::sobel(&image_processor, threshold);
+            image_processing::filter::sobel(&image_processor, threshold);
         }
         Command::Sobel2 => {
-            image_processing::convolution::sobel_test(&image_processor);
+            image_processing::filter::experiment::sobel_test(&image_processor);
         }
         Command::ConvTest(args) => {
-            image_processing::convolution::sobel_x_test(&image_processor, args.method);
+            image_processing::filter::experiment::sobel_x_test(&image_processor, args.method);
         }
     }
 

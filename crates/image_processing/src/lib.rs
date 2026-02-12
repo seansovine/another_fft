@@ -1,8 +1,8 @@
 // top-level library module
 
 pub mod basic_ops;
-pub mod convolution;
 pub mod fft;
+pub mod filter;
 
 use image::{ImageBuffer, Rgba};
 use rayon::ThreadPool;
